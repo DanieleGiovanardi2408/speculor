@@ -1,0 +1,15 @@
+{
+  "exported": "2026-10-15",
+  "note": "Fictional mini seed for tests.",
+  "postings": [
+    {"id": "nebbia-ai-intern", "p": "Alta", "co": "Nebbia Labs", "role": "AI Engineer Intern", "city": "Milano", "country": "Italia", "zone": "Italia", "type": "Stage 6 mesi", "kind": "Stage", "area": "AI", "url": "https://jobs.example.com/nebbia/1?utm_source=x", "via": "Sito aziendale", "date": "Inizio febbraio 2027", "deadline": "2026-11-30", "why": "LLM tooling", "warn": "", "ver": "Sito aziendale", "src": "", "status": "sent"},
+    {"id": "corvo-ds-grad", "p": "Media", "co": "Corvo Analytics", "role": "Graduate Data Scientist", "city": "Amsterdam", "country": "Paesi Bassi", "zone": "Europa", "type": "Graduate", "kind": "Graduate", "area": "Data", "url": "https://jobs.example.com/corvo/2", "via": "LinkedIn", "date": "", "deadline": "", "why": "", "warn": "Dutch a plus", "ver": "Da verificare", "src": "", "status": "closed"}
+  ],
+  "companies": [
+    {"co": "Nebbia Labs", "sector": "AI", "city": "Milano", "page": "https://example.com/careers", "program": "", "welfare": "", "why": "", "p": "Alta", "note": ""},
+    {"co": "Corvo Analytics", "sector": "Data", "city": "Amsterdam", "page": "Vedi foglio", "program": "", "welfare": "", "why": "", "p": "Media", "note": "note"}
+  ],
+  "applications": [
+    {"company": "Nebbia Labs", "role": "AI Engineer Intern", "city": "Milano", "date": "2026-10-09", "channel": "Sito aziendale", "cv": "CV v1", "stage": "Inviata", "note": ""}
+  ]
+}

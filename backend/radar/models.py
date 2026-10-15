@@ -59,7 +59,9 @@ class Posting(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     uid: str = Field(index=True, unique=True)  # "<source>:<external_id>"
-    source: str = Field(index=True)  # seed | greenhouse | lever | ashby | smartrecruiters | linkedin | manual
+    source: str = Field(
+        index=True
+    )  # seed | greenhouse | lever | ashby | smartrecruiters | linkedin | manual
     external_id: str
     url: str
     canonical_url: str = Field(index=True)
@@ -89,7 +91,7 @@ class Posting(SQLModel, table=True):
 
 
 class ChangeEvent(SQLModel, table=True):
-    """Change log: one row per new/changed/closed/reopened posting per run (powers the daily diff)."""
+    """Change log: one row per new/changed/closed/reopened posting per run (daily diff)."""
 
     __tablename__ = "change_events"
 

@@ -19,5 +19,5 @@ class Connector(Protocol):
     label: str
 
     def fetch(self) -> list[RawPosting]:
-        """Return all currently open postings for this source/board. Raise SourceError on failure."""
+        """Return all open postings for this source/board. Raise SourceError on failure."""
         ...

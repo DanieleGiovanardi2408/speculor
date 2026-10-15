@@ -10,8 +10,12 @@ from rich.console import Console
 
 from radar.config import REPO_ROOT, get_settings
 
-app = typer.Typer(no_args_is_help=True, add_completion=False, help="Radar: internship hunting, human in the loop.")
-config_app = typer.Typer(no_args_is_help=True, help="Store gitignored config files in the database.")
+app = typer.Typer(
+    no_args_is_help=True, add_completion=False, help="Radar: internship hunting, human in the loop."
+)
+config_app = typer.Typer(
+    no_args_is_help=True, help="Store gitignored config files in the database."
+)
 app.add_typer(config_app, name="config")
 console = Console()
 

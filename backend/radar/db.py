@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
-from radar import models  # noqa: F401  (register tables)
+from radar import models
 from radar.config import get_settings
 from radar.timeutil import utcnow
 

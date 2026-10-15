@@ -36,6 +36,10 @@ def _parse_date(value: Any) -> date | None:
         return None
 
 
+def _join(*parts: str | None) -> str | None:
+    return "\n".join(x for x in parts if x) or None
+
+
 def import_seed(session: Session, path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
     counts = {"companies": 0, "postings": 0, "applications": 0, "scores": 0}
@@ -44,6 +48,7 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
         if session.exec(select(Company).where(Company.name == c["co"])).first():
             continue
         page = c.get("page") or ""
+        is_url = page.startswith("http")
         session.add(
             Company(
                 name=c["co"],
@@ -52,7 +57,7 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
                 careers_url=page if page.startswith("http") else None,
                 program=c.get("program"),
                 why=c.get("why"),
-                notes="\n".join(x for x in (c.get("welfare"), c.get("note"), None if page.startswith("http") else page) if x) or None,
+                notes=_join(c.get("welfare"), c.get("note"), None if is_url else page),
                 priority=c.get("p"),
             )
         )
@@ -123,12 +128,12 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
         ).first()
         if exists:
             continue
-        posting = session.exec(
+        linked = session.exec(
             select(Posting).where(Posting.title == a["role"], Posting.source == "seed")
         ).first()
         session.add(
             Application(
-                posting_id=posting.id if posting else None,
+                posting_id=linked.id if linked else None,
                 company=a["company"],
                 role=a["role"],
                 city=a.get("city"),
@@ -139,8 +144,8 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
                 notes=a.get("note") or None,
             )
         )
-        if posting is not None and posting.user_status != "sent":
-            posting.user_status = "sent"
-            session.add(posting)
+        if linked is not None and linked.user_status != "sent":
+            linked.user_status = "sent"
+            session.add(linked)
         counts["applications"] += 1
     return counts
