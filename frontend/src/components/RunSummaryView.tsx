@@ -44,10 +44,27 @@ const COUNT_LABEL: Record<string, string> = {
   filtered: "filtrati",
   scored: "valutati",
   boards: "bacheche",
+  collected: "raccolti",
+  packs: "pacchetti",
   closed_by_absence: "chiusi (spariti)",
   closed_by_check: "chiusi (verifica)",
 };
 export const countLabel = (k: string) => COUNT_LABEL[k] ?? k.replace(/_/g, " ");
+
+const SINGULAR: Record<string, string> = {
+  errori: "errore",
+  nuovi: "nuovo",
+  chiusi: "chiuso",
+  modificati: "modificato",
+  riaperti: "riaperto",
+  scartati: "scartato",
+  segnalati: "segnalato",
+  valutati: "valutato",
+  pacchetti: "pacchetto",
+  raccolti: "raccolto",
+  filtrati: "filtrato",
+};
+const agree = (label: string, n: number) => (n === 1 ? (SINGULAR[label] ?? label) : label);
 
 export function parseRunStats(stats: Record<string, unknown> | null): ParsedStats {
   const out: ParsedStats = { sources: [], errors: [], tokens: [], totals: [] };
@@ -64,6 +81,9 @@ export function parseRunStats(stats: Record<string, unknown> | null): ParsedStat
           out.sources.push({ name, counts: { trovati: counts } });
         }
       }
+    } else if (key === "source_errors" && isObj(value)) {
+      // Demo shape: { source: "message" }
+      Object.entries(value).forEach(([src, msg]) => out.errors.push(`${src}: ${String(msg)}`));
     } else if (key === "errors" && Array.isArray(value)) {
       value.forEach((e) => {
         if (!isObj(e)) return out.errors.push(String(e));
@@ -109,7 +129,7 @@ export function RunSummaryView({ run, compact = false }: { run: RunSummary; comp
         <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
           {s.totals.map((t) => (
             <li key={t.label}>
-              <span className="font-semibold tabular-nums">{formatNumber(t.value)}</span> <span className="text-ink-muted">{t.label}</span>
+              <span className="font-semibold tabular-nums">{formatNumber(t.value)}</span> <span className="text-ink-muted">{agree(t.label, t.value)}</span>
             </li>
           ))}
         </ul>

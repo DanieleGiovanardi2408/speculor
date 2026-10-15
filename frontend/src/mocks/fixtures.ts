@@ -27,7 +27,7 @@ function score(priority: Priority, why: string, not: string, warnings: string[] 
     priority,
     why_fits: why,
     what_doesnt_fit: not,
-    start_window: "Gennaio – Marzo",
+    start_window: "febbraio-aprile 2027",
     language_requirements: langs,
     warnings,
     confidence: 0.8,
@@ -61,7 +61,7 @@ interface Seed {
 
 const seeds: Seed[] = [
   {
-    title: "Stage Data Analyst – Pricing",
+    title: "Stage Data Analyst, Pricing",
     company: "Nebbia Labs",
     location: "Milano",
     cc: "IT",
@@ -110,7 +110,7 @@ const seeds: Seed[] = [
     note: "Chiedere a Giulia (ex compagna di corso) com'è il team.",
   },
   {
-    title: "Graduate Trainee – Sustainability Reporting",
+    title: "Graduate Trainee, Sustainability Reporting",
     company: "Acquaviva Energia",
     location: "Bologna",
     cc: "IT",
@@ -234,7 +234,7 @@ const seeds: Seed[] = [
     user_status: "skipped",
   },
   {
-    title: "Strategy Intern – Energy Transition",
+    title: "Strategy Intern, Energy Transition",
     company: "Acquaviva Energia",
     location: "Bruxelles",
     cc: "BE",
@@ -336,7 +336,7 @@ export const draftsSeed: Draft[] = [
     status: "draft",
     created_at: isoTs(0, 6),
     updated_at: isoTs(0, 6),
-    posting_title: "Stage Data Analyst – Pricing",
+    posting_title: "Stage Data Analyst, Pricing",
     company_name: "Nebbia Labs",
     contact_name: "Marta Esempio",
   },
@@ -349,12 +349,12 @@ export const draftsSeed: Draft[] = [
     kind: "email",
     channel: "email",
     recipient: null,
-    text: "Gentile Luca,\n\nle scrivo in merito allo stage Data Analyst – Pricing. Ho inviato la candidatura tramite il portale e volevo solo confermare la mia disponibilità da febbraio.\n\nCordiali saluti",
+    text: "Gentile Luca,\n\nle scrivo in merito allo stage Data Analyst, Pricing. Ho inviato la candidatura tramite il portale e volevo solo confermare la mia disponibilità full-time da febbraio-aprile 2027.\n\nCordiali saluti",
     status: "draft",
     style_issues: ["Frase d'apertura generica: personalizza con un dettaglio del team."],
     created_at: isoTs(0, 6),
     updated_at: isoTs(0, 6),
-    posting_title: "Stage Data Analyst – Pricing",
+    posting_title: "Stage Data Analyst, Pricing",
     company_name: "Nebbia Labs",
     contact_name: "Luca Prova",
   },
@@ -371,7 +371,7 @@ export const draftsSeed: Draft[] = [
     status: "draft",
     created_at: isoTs(-1, 6),
     updated_at: isoTs(-1, 6),
-    posting_title: "Strategy Intern – Energy Transition",
+    posting_title: "Strategy Intern, Energy Transition",
     company_name: "Acquaviva Energia",
     contact_name: "Sofia Campione",
   },
@@ -416,15 +416,15 @@ export const packsSeed: Omit<Pack, "posting" | "contacts" | "drafts">[] = [
     id: 1,
     posting_id: 101,
     cover_letter:
-      "Gentile team di Nebbia Labs,\n\nvi scrivo per candidarmi allo stage Data Analyst nel team Pricing. Nella tesi magistrale sto stimando l'elasticità della domanda per un e-commerce di medie dimensioni, usando Python e SQL su dati di transazione reali. Mi interessa capire come queste stime diventino decisioni di prezzo quotidiane, ed è esattamente ciò che descrivete.\n\nNel tirocinio precedente ho automatizzato un report settimanale riducendo il tempo di preparazione da un giorno a un'ora. Sono disponibile da febbraio, a tempo pieno.\n\nGrazie per l'attenzione.",
+      "Disponibile full-time da febbraio-aprile 2027.\n\nGentile team di Nebbia Labs,\n\nmi candido allo stage Data Analyst nel team Pricing a Milano. Sto concludendo la laurea magistrale e nella tesi stimo l'elasticità della domanda per un e-commerce di medie dimensioni, con Python e SQL su dati di transazione reali.\n\nNel tirocinio precedente ho automatizzato un report settimanale: la preparazione è passata da un giorno a un'ora. Ho documentato ogni passaggio così che il team potesse riusarlo senza di me.\n\nPorterei Python, SQL e l'abitudine di spiegare i risultati in parole semplici. Parlo italiano e inglese in modo fluente.\n\nGrazie per l'attenzione. Sarei felice di raccontarvi come potrei aiutare il team.\n\nCordiali saluti",
     form_answers: [
       { question: "Perché vuoi lavorare in Nebbia Labs?", answer: "Perché il team pricing lavora su problemi che sto già studiando in tesi, con dati reali e ciclo di feedback rapido." },
-      { question: "Disponibilità di inizio", answer: "Da febbraio, a tempo pieno, per 6 mesi." },
+      { question: "Disponibilità di inizio", answer: "Disponibile full-time da febbraio-aprile 2027." },
     ],
     cv_version: "cv-data-it-v3",
     apply_link: "https://jobs.example.com/nebbia-labs/101/apply",
     language: "it",
-    style_issues: ["Evita 'esattamente ciò che descrivete': suona generico."],
+    style_issues: ["Il secondo paragrafo è lungo: valuta di dividerlo."],
     provider: "mock",
     model: "mock-model",
     updated_at: isoTs(0, 6),
@@ -432,7 +432,7 @@ export const packsSeed: Omit<Pack, "posting" | "contacts" | "drafts">[] = [
   {
     id: 2,
     posting_id: 112,
-    cover_letter: "Dear Acquaviva Energia team,\n\nI am applying for the Strategy Internship on the energy transition. My thesis models the Italian electricity market under different renewable scenarios.\n\nKind regards",
+    cover_letter: "Available full-time from February-April 2027.\n\nDear Acquaviva Energia team,\n\nI am applying for the Strategy Internship on the energy transition. My thesis models the Italian electricity market under different renewable scenarios.\n\nKind regards",
     form_answers: [],
     cv_version: "cv-strategy-en-v1",
     apply_link: "https://jobs.example.com/acquaviva-energia/112/apply",
@@ -464,14 +464,14 @@ const app = (id: number, company: string, role: string, city: string, daysAgo: n
 });
 
 export const applicationsSeed: Application[] = [
-  app(1, "Pietra Bianca Consulting", "Stage Controllo di Gestione", "Roma", 4, "Portale aziendale", "cv-finance-it-v2", "Inviata", { posting_id: 106 }),
-  app(2, "Ferrovia Quieta", "Internship Business Intelligence", "Milano", 20, "LinkedIn Easy Apply", "cv-data-it-v3", "Colloquio 1", { next_step: "Colloquio tecnico con il BI lead", next_step_date: isoDate(3), posting_id: 110 }),
+  app(1, "Pietra Bianca Consulting", "Stage Controllo di Gestione", "Roma", 4, "Sito aziendale", "cv-finance-it-v2", "Inviata", { posting_id: 106 }),
+  app(2, "Ferrovia Quieta", "Internship Business Intelligence", "Milano", 20, "LinkedIn", "cv-data-it-v3", "Colloquio 1", { next_step: "Colloquio tecnico con il BI lead", next_step_date: isoDate(3), posting_id: 110 }),
   app(3, "Tramonto Studio", "Research Assistant", "Amsterdam", 18, "Email", "cv-data-en-v2", "Inviata"),
-  app(4, "Gelso Bio", "Data Intern", "Lione", 30, "Portale aziendale", "cv-data-en-v2", "Rifiutata", { notes: "Rifiuto standard, nessun feedback." }),
+  app(4, "Gelso Bio", "Data Intern", "Lione", 30, "Sito aziendale", "cv-data-en-v2", "Rifiutata", { notes: "Rifiuto standard, nessun feedback." }),
   app(5, "Lanterna Analytics", "Analytics Intern (2025)", "Berlino", 25, "Referral", "cv-data-en-v2", "Test/case", { next_step: "Consegna case study", next_step_date: isoDate(2) }),
-  app(6, "Borgo Robotics", "Tirocinio Operations", "Torino", 2, "Portale aziendale", "cv-data-it-v3", "Inviata"),
+  app(6, "Borgo Robotics", "Tirocinio Operations", "Torino", 2, "Sito aziendale", "cv-data-it-v3", "Inviata"),
   app(7, "Acquaviva Energia", "Summer Internship", "Bologna", 40, "Email", "cv-finance-it-v2", "Nessuna risposta"),
-  app(8, "Nebbia Labs", "Stage Analytics (call precedente)", "Milano", 1, "Portale aziendale", "cv-data-it-v3", "Screening HR", { next_step: "Telefonata HR", next_step_date: isoDate(1) }),
+  app(8, "Nebbia Labs", "Stage Analytics (call precedente)", "Milano", 1, "Sito aziendale", "cv-data-it-v3", "Screening HR", { next_step: "Telefonata HR", next_step_date: isoDate(1) }),
 ];
 
 export const runsSeed: RunSummary[] = [

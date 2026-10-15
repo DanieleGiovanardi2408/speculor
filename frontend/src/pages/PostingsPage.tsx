@@ -165,6 +165,10 @@ export function PostingsPage() {
   const sortId = useId();
   const rejectedId = useId();
   const filtersId = useId();
+  // Render in pages: ~1000 expandable cards at once makes filtering sluggish.
+  const PAGE = 100;
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [sp]);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [search, setSearch] = useState(sp.get("q") ?? "");
@@ -326,10 +330,17 @@ export function PostingsPage() {
         <>
         <h2 className="sr-only">Elenco annunci</h2>
         <ul className="space-y-3" aria-label="Elenco annunci">
-          {data.map((p) => (
+          {data.slice(0, Math.max(limit, data.findIndex((p) => p.id === openId) + 1)).map((p) => (
             <PostingRow key={p.id} posting={p} defaultOpen={p.id === openId} />
           ))}
         </ul>
+        {data.length > limit && (
+          <div className="mt-4 flex justify-center">
+            <button type="button" className="btn-secondary" onClick={() => setLimit((l) => l + PAGE)}>
+              Mostra altri {Math.min(PAGE, data.length - limit)} (ne restano {data.length - limit})
+            </button>
+          </div>
+        )}
         </>
       )}
     </>

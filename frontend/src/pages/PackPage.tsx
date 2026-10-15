@@ -117,7 +117,7 @@ function PackEditor({ pack }: { pack: Pack }) {
         <textarea
           id={ids.cover}
           className={`field min-h-72 font-[inherit] leading-relaxed ${words > MAX_WORDS ? "border-danger" : ""}`}
-          rows={14}
+          rows={Math.min(32, Math.max(12, cover.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / 95)), 0) + 1))}
           value={cover}
           onChange={(e) => setCover(e.target.value)}
           aria-describedby={ids.coverCount}

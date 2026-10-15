@@ -100,7 +100,7 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
   const toast = useToast();
   const p = posting;
   const rejected = p.filter_state === "rejected";
-  const flagged = p.filter_hits.some((h) => h.action === "flag") || (p.score?.warnings.length ?? 0) > 0;
+  const flagged = p.filter_state === "flagged" || p.filter_hits.some((h) => h.action === "flag" && !h.overridden);
 
   useEffect(() => {
     if (defaultOpen) rowRef.current?.scrollIntoView({ block: "center" });

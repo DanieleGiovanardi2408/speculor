@@ -886,6 +886,43 @@ def _first_seen(p: _P, now: datetime, run1_at: datetime, run2_at: datetime) -> d
     return now - timedelta(days=p.age, hours=3)
 
 
+def _run_stats(
+    sources: dict[str, tuple[int, int, int]],
+    *,
+    new: int,
+    changed: int,
+    closed: int,
+    rejected: int,
+    flagged: int,
+    scored: int,
+    packs: int,
+    errors: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Same shape as radar.pipeline.run writes (counts only)."""
+    failed = {e["source"] for e in errors}
+    return {
+        "sources": {
+            name: {"boards": b, "fetched": f, "new": n, "errors": int(name in failed)}
+            for name, (b, f, n) in sources.items()
+        },
+        "new": new,
+        "changed": changed,
+        "closed": closed,
+        "reopened": 0,
+        "rejected": rejected,
+        "flagged": flagged,
+        "llm": {
+            "scoring": {
+                "scored": scored,
+                "input_tokens": 2300 * scored,
+                "output_tokens": 180 * scored,
+            },
+            "packs": {"built": packs, "input_tokens": 4500 * packs, "output_tokens": 1300 * packs},
+        },
+        "errors": errors,
+    }
+
+
 def load_demo(session: Session) -> dict[str, int]:
     """Insert the fictional dataset. Returns counts; ``{"skipped": 1}`` if already loaded."""
     if session.exec(select(Company).where(Company.name == COMPANIES[0].name)).first():
@@ -905,25 +942,17 @@ def load_demo(session: Session) -> dict[str, int]:
         started_at=run1_at,
         finished_at=run1_at + timedelta(minutes=6),
         status="ok",
-        stats={
-            "collected": 386,
-            "new": 4,
-            "changed": 1,
-            "closed": 1,
-            "reopened": 0,
-            "rejected": 0,
-            "flagged": 0,
-            "scored": 4,
-            "packs": 2,
-            "errors": 0,
-            "by_source": {
-                "greenhouse": 142,
-                "lever": 98,
-                "ashby": 61,
-                "smartrecruiters": 55,
-                "linkedin": 30,
-            },
-        },
+        stats=_run_stats(
+            {"greenhouse": (12, 142, 2), "lever": (6, 98, 1), "ashby": (8, 61, 1)},
+            new=4,
+            changed=1,
+            closed=1,
+            rejected=0,
+            flagged=0,
+            scored=4,
+            packs=2,
+            errors=[],
+        ),
         report_md=(
             "# Radar run (demo)\n\n- Collected 386 postings from 5 sources\n"
             "- 4 new, 1 changed, 1 closed\n- 4 scored, 2 application packs ready\n"
@@ -933,26 +962,22 @@ def load_demo(session: Session) -> dict[str, int]:
         started_at=run2_at,
         finished_at=run2_at + timedelta(minutes=7),
         status="partial",
-        stats={
-            "collected": 401,
-            "new": 6,
-            "changed": 1,
-            "closed": 2,
-            "reopened": 0,
-            "rejected": 1,
-            "flagged": 1,
-            "scored": 4,
-            "packs": 1,
-            "errors": 1,
-            "by_source": {
-                "greenhouse": 150,
-                "lever": 101,
-                "ashby": 63,
-                "smartrecruiters": 57,
-                "linkedin": 30,
+        stats=_run_stats(
+            {
+                "greenhouse": (12, 150, 3),
+                "lever": (6, 101, 1),
+                "ashby": (8, 63, 2),
+                "linkedin": (1, 0, 0),
             },
-            "source_errors": {"linkedin": "rate limited, retried next run"},
-        },
+            new=6,
+            changed=1,
+            closed=2,
+            rejected=1,
+            flagged=1,
+            scored=4,
+            packs=1,
+            errors=[{"source": "linkedin", "error": "SourceError (HTTP 429)"}],
+        ),
         report_md=(
             "# Radar run (demo)\n\n- Collected 401 postings from 5 sources (1 source error)\n"
             "- 6 new (1 rejected by filters, 1 flagged), 1 changed, 2 closed\n"

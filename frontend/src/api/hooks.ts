@@ -268,8 +268,15 @@ export function useDeleteContact(postingId: number) {
 }
 
 function upsertDraftInCaches(qc: QueryClient, d: Draft) {
-  // Lists keyed by status: remove from lists of other statuses, update/insert in its own.
-  qc.setQueriesData<Draft[]>({ queryKey: qk.draftsAll }, (old) => old?.map((x) => (x.id === d.id ? d : x)));
+  // Lists are keyed by status: remove from lists of other statuses, update/insert in its own.
+  for (const [key, list] of qc.getQueriesData<Draft[]>({ queryKey: qk.draftsAll })) {
+    if (!list) continue;
+    const status = key[1];
+    const without = list.filter((x) => x.id !== d.id);
+    const exists = without.length !== list.length;
+    const next = status === d.status ? (exists ? list.map((x) => (x.id === d.id ? d : x)) : [...list, d]) : without;
+    qc.setQueryData(key, next);
+  }
   if (d.posting_id != null) {
     qc.setQueryData<Pack | null>(qk.pack(d.posting_id), (old) => {
       if (!old) return old;
@@ -310,7 +317,11 @@ export function usePatchDraft() {
       await qc.cancelQueries({ queryKey: qk.draftsAll });
       const snap = snapshot(qc, [qk.draftsAll, ["pack"]]);
       const apply = (d: Draft): Draft => (d.id === id ? ({ ...d, ...patch } as Draft) : d);
-      qc.setQueriesData<Draft[]>({ queryKey: qk.draftsAll }, (old) => old?.map(apply));
+      const current = qc
+        .getQueriesData<Draft[]>({ queryKey: qk.draftsAll })
+        .flatMap(([, l]) => l ?? [])
+        .find((d) => d.id === id);
+      if (current) upsertDraftInCaches(qc, apply(current));
       qc.setQueriesData<Pack | null>({ queryKey: ["pack"] }, (old) =>
         old ? { ...old, drafts: old.drafts.map(apply) } : old,
       );

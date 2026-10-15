@@ -53,8 +53,12 @@ export const SOURCE_LABEL: Record<string, string> = {
   workday: "Workday",
   careers_page: "Pagina carriere",
   linkedin_rss: "LinkedIn (RSS)",
+  linkedin: "LinkedIn",
+  ashby: "Ashby",
+  smartrecruiters: "SmartRecruiters",
   manual: "Aggiunto a mano",
 };
 export const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;
 
-export const CHANNEL_OPTIONS = ["Portale aziendale", "LinkedIn Easy Apply", "Email", "Referral", "Altro"];
+/** Same labels the backend demo/CLI uses, so stats group correctly. */
+export const CHANNEL_OPTIONS = ["Sito aziendale", "LinkedIn", "Email", "Referral", "Altro"];
