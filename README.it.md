@@ -46,9 +46,10 @@ stanno sul branch orfano `data`, mai su `main`. Dettagli in
 ## Limiti ed etica
 
 Solo fonti pubbliche, con rate limit, cache, user agent onesto, robots.txt e back-off. Nessuno
-scraping con login, nessun cookie in cloud/CI, nessuna elusione di CAPTCHA o anti-bot. La ricerca
-guest di LinkedIn è pubblica ma le condizioni d'uso di LinkedIn limitano l'accesso automatico:
-è a basso volume, opzionale e disattivabile. L'invio con linkedin-cli è locale e sotto la
+scraping con login, nessun cookie in cloud/CI, nessuna elusione di CAPTCHA o anti-bot. Il robots.txt
+di LinkedIn vieta `/jobs-guest/` ai crawler non autorizzati: il connettore LinkedIn lo rispetta e
+non scarica nulla (per LinkedIn usa gli alert e-mail o "Aggiungi da URL"). Anche l'API di
+SmartRecruiters lo vieta, quindi quelle aziende sono disattivate di default. L'invio con linkedin-cli è locale e sotto la
 responsabilità dell'utente.
 
 ## Licenza

@@ -21,9 +21,9 @@ one, each after an explicit confirmation.
 
 | Oggi (today) | Annunci (postings) |
 |---|---|
-| ![Today view](docs/screenshots/oggi.png) | ![Postings](docs/screenshots/annunci.png) |
+| ![Today view](docs/screenshots/oggi-desktop.png) | ![Postings](docs/screenshots/annunci-desktop.png) |
 | **Pacchetto (application pack)** | **Approvazioni (approvals)** |
-| ![Application pack](docs/screenshots/pacchetto.png) | ![Approvals](docs/screenshots/approvazioni.png) |
+| ![Application pack](docs/screenshots/pacchetto-desktop.png) | ![Approvals](docs/screenshots/approvazioni-desktop.png) |
 
 Screenshots use the fictional demo data (`make dev`).
 
@@ -81,6 +81,14 @@ scores new postings, builds packs for the best ones and writes a report. In the 
 command runs every day at 07:00 Europe/Amsterdam on GitHub Actions; its data lives on an orphan
 `data` branch, never on `main` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
+Daily routine with the cloud run (until the shared Postgres database lands):
+
+```bash
+make pull-data   # morning: fetch the DB + report from the 07:00 run
+make dev-real    # review, edit, approve in the web app
+make push-data   # upload approvals, notes and applications for the next run
+```
+
 ## Sending approved drafts: `radar send`
 
 ```bash
@@ -101,23 +109,30 @@ profile instead. `radar send` refuses to run in CI.
 
 Local first. Daily runs on GitHub Actions (secrets: `GROQ_API_KEY`, optional
 `ANTHROPIC_API_KEY`). Supabase (Postgres + email auth with an allow-list) and Vercel (FastAPI +
-static frontend) are planned. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+static frontend) are planned; the backend already runs on Postgres (`psycopg`). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Limits and ethics
 
 Radar is a personal tool that reads a small amount of public data, politely:
 
-- **Sources**: public ATS job APIs and pages (Greenhouse, Lever, Ashby, SmartRecruiters) for a
-  user-curated list of companies, and LinkedIn's public guest job search.
+- **Sources**: public ATS job APIs (Greenhouse, Lever, Ashby, SmartRecruiters) for a
+  user-curated list of companies, LinkedIn's public guest job search, and URLs added by hand.
+- **robots.txt is respected, even when it costs results.** LinkedIn's robots.txt disallows
+  `/jobs-guest/` for every crawler that is not explicitly whitelisted, so the LinkedIn connector
+  checks it, reports "disallowed by robots.txt" and fetches nothing. The SmartRecruiters
+  posting API's robots.txt also disallows generic agents, so those companies ship disabled
+  (`active: false`); enabling them is a deliberate user choice. Details in
+  [docs/SOURCES.md](docs/SOURCES.md).
 - **Politeness**: per-host rate limits, an on-disk HTTP cache (default 12 h), an honest user
-  agent with a link to this repository, robots.txt checks for HTML pages, exponential back-off
+  agent with a link to this repository, robots.txt checks, exponential back-off
   honouring `Retry-After` on 429/403/5xx, and a hard stop after repeated failures.
 - **No logged-in scraping**, no cookies in the cloud or CI, no CAPTCHA solving, no proxy
   rotation or fingerprint evasion. When a source blocks us, the run records the failure and
   moves on.
-- **LinkedIn**: the guest job search is public, but LinkedIn's User Agreement restricts
-  automated access. Radar uses it at low volume, it is optional and can be disabled in
-  *Impostazioni*, and the project accepts failures rather than evading blocks.
+- **LinkedIn**: LinkedIn's User Agreement restricts automated access. The guest connector is
+  low-volume, optional, can be disabled in *Impostazioni*, and (as above) currently stands
+  down because of robots.txt. For LinkedIn postings, use LinkedIn's own e-mail job alerts (an
+  IMAP connector is planned) or paste a URL into *Aggiungi da URL*.
 - **Sending** through linkedin-cli uses the user's own LinkedIn session, runs only locally and
   only after explicit confirmation of each message; it is the user's own responsibility.
 - **LLM**: posting text and the user's profile are sent to the configured LLM provider (Groq by
