@@ -34,15 +34,11 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: LLMProviderName = Field(default="groq", validation_alias="RADAR_LLM_PROVIDER")
-    scoring_model: str = Field(
-        default="llama-3.1-8b-instant", validation_alias="RADAR_SCORING_MODEL"
-    )
+    scoring_model: str = Field(default="openai/gpt-oss-20b", validation_alias="RADAR_SCORING_MODEL")
     draft_provider: LLMProviderName | None = Field(
         default=None, validation_alias="RADAR_DRAFT_PROVIDER"
     )
-    draft_model: str = Field(
-        default="llama-3.3-70b-versatile", validation_alias="RADAR_DRAFT_MODEL"
-    )
+    draft_model: str = Field(default="openai/gpt-oss-120b", validation_alias="RADAR_DRAFT_MODEL")
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 

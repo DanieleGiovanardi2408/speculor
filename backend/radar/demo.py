@@ -30,8 +30,8 @@ from radar.pipeline.normalize import canonical_url, content_hash, dedupe_key, zo
 from radar.timeutil import utcnow
 
 AVAILABILITY_LINE = "Available full-time from February-April 2027."
-SCORING_MODEL = "llama-3.1-8b-instant"
-DRAFT_MODEL = "llama-3.3-70b-versatile"
+SCORING_MODEL = "openai/gpt-oss-20b"
+DRAFT_MODEL = "openai/gpt-oss-120b"
 
 
 @dataclass(frozen=True)
