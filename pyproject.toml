@@ -17,6 +17,7 @@ dependencies = [
     "rich>=13.7",
     "selectolax>=0.3.21",
     "python-dotenv>=1.0",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.scripts]
