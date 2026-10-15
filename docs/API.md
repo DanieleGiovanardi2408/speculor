@@ -93,6 +93,7 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | GET | /api/drafts | query: `status` (default `draft`), `channel` | Draft[] |
 | POST | /api/drafts | `{posting_id, contact_id?, kind, channel?, recipient?, text}` | Draft |
 | PATCH | /api/drafts/{id} | `{text?, recipient?, status?}` (status only `draft\|approved\|skipped`; `sent` is set only by `radar send` or `/mark-sent`) | Draft |
+| POST | /api/drafts/for-contact | `{posting_id, contact_id, kind}` LLM writes a draft for one contact (status `draft`, nothing is sent) | Draft |
 | POST | /api/drafts/{id}/mark-sent | manual send recorded (copy button flow) | Draft |
 | GET | /api/applications | | Application[] |
 | POST | /api/applications | `{company, role, city?, date_sent, channel, cv_version, stage?, notes?, posting_id?}` | Application |
@@ -107,3 +108,10 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 Rules: no route ever submits an application or sends a message. `followup_due` = stage
 `Inviata`, not responded, `date_sent` 14+ days ago. "Since yesterday" = change events in the
 latest run (fallback: last 24 hours).
+
+Notes: list filters (`priority, zone, type, status, source, user_status` on postings; `status` on
+drafts) also accept comma-separated values; `priority=none` matches unscored postings and
+`GET /api/drafts?status=all` returns every draft. Errors are `{detail: string}` (FastAPI): 404
+unknown id, 422 validation, 409 editing a sent draft, 501 when an optional component (LLM
+packs, manual add) is not installed, 502 when the LLM / fetch fails. Auth errors: 401 missing,
+invalid or expired token, 403 email not allowed.
