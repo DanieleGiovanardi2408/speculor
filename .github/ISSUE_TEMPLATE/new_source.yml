@@ -1,0 +1,41 @@
+name: New job source
+description: Propose a new place to collect postings from (ATS, job board, careers page)
+labels: [source]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Source name
+      placeholder: e.g. Workable, Personio, Recruitee
+    validations:
+      required: true
+  - type: input
+    id: example
+    attributes:
+      label: Example public URL
+      description: A public careers page or API endpoint (no login).
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: How is the data exposed?
+      options: [Public JSON API, Public HTML pages, RSS / feed, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: terms
+    attributes:
+      label: Terms, robots.txt and rate limits
+      description: What do the site's terms and robots.txt say? Any documented rate limits?
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Rules
+      options:
+        - label: No login, cookies or API keys belonging to someone else are needed.
+          required: true
+        - label: No CAPTCHA solving or anti-bot evasion is needed.
+          required: true

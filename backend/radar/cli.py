@@ -146,7 +146,9 @@ def send(
     """Send APPROVED LinkedIn drafts, one by one, each only after you confirm. Local only."""
     from radar.send import send_approved
 
-    send_approved(dry_run=dry_run)
+    result = send_approved(dry_run=dry_run)
+    if result.get("stopped") in {"unauthenticated", "quota"}:
+        raise typer.Exit(1)
 
 
 @config_app.command("push")
