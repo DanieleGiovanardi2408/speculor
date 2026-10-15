@@ -64,8 +64,17 @@ make bootstrap-data  # radar config push + push data/radar.db to the `data` bran
 ```
 
 `make bootstrap-data` works in a temporary git worktree and only pushes `refs/heads/data`.
-To pull the latest cloud state locally:
-`git fetch origin data && git show origin/data:radar.db > data/radar.db`.
+Daily routine until the shared Postgres database exists:
+
+```bash
+make pull-data   # morning: get the DB + reports from the 07:00 run (local DB backed up first)
+make dev-real    # review, edit, approve in the web app
+make send        # optional: send approved LinkedIn drafts, one by one
+make push-data   # evening: upload your approvals/notes/applications for the next run
+```
+
+`make push-data` refuses to overwrite the branch if the daily workflow wrote a newer DB since
+your last pull (pull first, or `FORCE=1`).
 
 While the repository is private, anyone with read access can read the `data` branch: keep it
 private, and delete the branch (and any forks) before making it public.

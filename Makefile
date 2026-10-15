@@ -20,7 +20,7 @@ define serve_both
 endef
 
 .PHONY: help install dev dev-real seed test lint fmt run-pipeline report send send-dry build \
-	bootstrap-data clean
+	bootstrap-data pull-data push-data clean
 
 help: ## List available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -80,6 +80,12 @@ build: ## Build the frontend for production (frontend/dist)
 
 bootstrap-data: ## One-off: push config + data/radar.db to the orphan `data` branch (for CI)
 	./scripts/bootstrap_data.sh
+
+pull-data: ## Download the DB + reports written by the daily workflow (backs up the local DB)
+	./scripts/pull_data.sh
+
+push-data: ## Upload your local DB (approvals, notes) to the `data` branch for the next daily run
+	./scripts/push_data.sh
 
 clean: ## Remove caches, build output and the demo DB (keeps data/radar.db)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov frontend/dist data/demo.db
