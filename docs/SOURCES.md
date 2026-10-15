@@ -143,8 +143,8 @@ The posting is stored with `source="manual"` and `uid="manual:<sha256(canonical_
 
 ## Unresolved companies
 
-These companies from the seed list have no supported public ATS board, so they are kept in the
-config with `ats: none` (Workday is postponed). Some companies seen only in individual
-LinkedIn/JobTeaser posting URLs weren't added as boards.
-
-The list itself stays in the user's gitignored `companies.yaml`, because it reveals the user's target companies.
+Companies without a supported public board stay in the user's (gitignored) `companies.yaml`
+with `ats: none` and an `unresolved` reason. Typical reasons: Workday (connector postponed),
+SAP SuccessFactors, Avature, Oracle Recruiting Cloud, intervieweb, Teamtailor, Factorial,
+Workable, Personio, or a fully custom careers portal. The list itself is private because it
+reveals the user's target companies.
