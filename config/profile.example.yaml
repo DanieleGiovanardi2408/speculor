@@ -1,0 +1,33 @@
+# Fictional example profile. Copy to config/profile.yaml (gitignored) and fill in your own.
+name: Alex Example
+headline: Data Scientist. MSc Data Science, Example University
+citizenship: EU citizen, open to relocation across Europe
+based_in: Bologna (IT)
+availability: Full-time from February-April 2027, for an internship or a direct hire
+graduation: MSc Data Science, Example University, expected July 2027
+links:
+  github: https://github.com/example
+  linkedin: https://www.linkedin.com/in/example
+languages:
+  - {language: Italian, level: native}
+  - {language: English, level: C1 (fluent)}
+target_roles:
+  - AI/LLM engineer
+  - Data scientist / ML
+  - AI consulting
+education:
+  - Example University. MSc Data Science, 2025 to 2027.
+experience:
+  - org: Example Analytics
+    role: Data Intern
+    period: Jun 2026 to Aug 2026
+    facts:
+      - Built a forecasting pipeline in Python for weekly demand.
+projects:
+  - {name: tinybench, what: "Small benchmark of LLM agents on spreadsheet tasks"}
+skills:
+  programming: Python, SQL, TypeScript
+  ml: Forecasting, classification, evaluation design
+  llm: RAG, embeddings, tool-calling agents
+cv_versions:
+  - {name: CV v1, description: "1 page, English", default: true}

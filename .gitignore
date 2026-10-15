@@ -1,0 +1,39 @@
+# Personal data: never commit
+private/
+data/
+config/profile.yaml
+config/companies.yaml
+config/rules.yaml
+radar_seed.json
+*.pdf
+*.db
+*.db-journal
+*.sqlite
+exports/
+reports/
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
