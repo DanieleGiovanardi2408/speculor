@@ -150,9 +150,20 @@ def render_report(session: Session, run: Run, diff: Diff, today: date | None = N
     out += _section("New flagged", body)
 
     body = []
-    for p in rejected:
-        body.append(f"- {_headline(p)}")
-        body += [f"  - {_hit_line(h)}" for h in hits.get(p.id or -1, []) if h.action == "reject"]
+    if rejected:
+        by_rule: dict[str, int] = defaultdict(int)
+        for p in rejected:
+            for rule_id in {h.rule_id for h in hits.get(p.id or -1, []) if h.action == "reject"}:
+                by_rule[rule_id] += 1
+        body += ["| Rule | Postings |", "|---|---:|"]
+        body += [f"| `{r}` | {n} |" for r, n in sorted(by_rule.items(), key=lambda x: -x[1])]
+        body += ["", f"<details><summary>All {len(rejected)} rejected, with evidence</summary>", ""]
+        for p in rejected:
+            body.append(f"- {_headline(p)}")
+            body += [
+                f"  - {_hit_line(h)}" for h in hits.get(p.id or -1, []) if h.action == "reject"
+            ]
+        body += ["", "</details>"]
     out += _section("New rejected", body)
 
     if diff.changed:
