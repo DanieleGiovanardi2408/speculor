@@ -70,20 +70,13 @@ export function parseRunStats(stats: Record<string, unknown> | null): ParsedStat
   const out: ParsedStats = { sources: [], errors: [], tokens: [], totals: [] };
   if (!stats) return out;
   for (const [key, value] of Object.entries(stats)) {
-    if ((key === "sources" || key === "per_source" || key === "by_source") && isObj(value)) {
+    if (key === "sources" && isObj(value)) {
       for (const [name, counts] of Object.entries(value)) {
         if (isObj(counts)) {
           const nums = Object.fromEntries(Object.entries(counts).filter(([, n]) => typeof n === "number")) as Record<string, number>;
           out.sources.push({ name, counts: nums });
-          if (Array.isArray(counts.errors)) counts.errors.forEach((e) => out.errors.push(`${name}: ${String(e)}`));
-          else if (typeof counts.error === "string") out.errors.push(`${name}: ${counts.error}`);
-        } else if (typeof counts === "number") {
-          out.sources.push({ name, counts: { trovati: counts } });
         }
       }
-    } else if (key === "source_errors" && isObj(value)) {
-      // Demo shape: { source: "message" }
-      Object.entries(value).forEach(([src, msg]) => out.errors.push(`${src}: ${String(msg)}`));
     } else if (key === "errors" && Array.isArray(value)) {
       value.forEach((e) => {
         if (!isObj(e)) return out.errors.push(String(e));
@@ -101,10 +94,6 @@ export function parseRunStats(stats: Record<string, unknown> | null): ParsedStat
       }
       if (input || output) out.tokens.push({ label: "input", value: input }, { label: "output", value: output });
       if (typeof value.skipped === "string") out.llmSkipped = value.skipped;
-    } else if (/token/i.test(key)) {
-      if (typeof value === "number") out.tokens.push({ label: "totale", value });
-      else if (isObj(value))
-        Object.entries(value).forEach(([k, v]) => typeof v === "number" && out.tokens.push({ label: k === "input" ? "input" : k === "output" ? "output" : k, value: v }));
     } else if (typeof value === "number") {
       out.totals.push({ label: countLabel(key), value });
     }
