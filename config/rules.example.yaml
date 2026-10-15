@@ -1,0 +1,389 @@
+# Radar hard filters (deterministic, applied before any LLM call).
+#
+# Each hit stores rule_id, action (reject | flag), reason and evidence (the snippet that
+# triggered it, <= evidence_chars). Rejected postings are hidden by default but can be
+# overridden by hand in the web app. All regexes are Python `re`, case-insensitive.
+#
+# Fields that can be searched: title, raw_text, location, start_info.
+# `unless` patterns are searched in the same sentence as the match (window of
+# `unless_window` chars on each side), or in the whole field when `unless_scope: field`.
+# `unless_action: skip` drops the hit, `unless_action: flag` downgrades a reject to a flag.
+#
+# User availability encoded below: full-time from Feb-Apr 2027, MSc graduating July 2027,
+# languages Italian (native) + English (fluent), EU citizen.
+version: 1
+evidence_chars: 200
+
+# ---------------------------------------------------------------------------------------
+# Start date (code-driven month parsing; the parameters and phrase lists live here)
+# ---------------------------------------------------------------------------------------
+start_date:
+  enabled: true
+  fields: [title, start_info, raw_text]
+  ok_from: '2027-01'      # Jan 2027 .. May 2027 compatible
+  ok_to: '2027-05'
+  summer_from: '2027-06'  # start only in Jun-Sep 2027 = summer internship -> reject
+  summer_to: '2027-09'
+  ids:
+    before: start_before_window
+    summer: start_summer_only
+    late: start_after_window
+    not_stated: start_not_stated
+  actions:
+    before: reject
+    summer: reject
+    late: flag
+    not_stated: flag
+  reasons:
+    before: 'start {when} is before January 2027'
+    summer: 'summer-only start ({when}); available Feb-Apr 2027'
+    late: 'start {when} is after the Feb-Apr 2027 window'
+    not_stated: 'start not stated'
+  # "Strong" keywords: a month, a season or a bare year right after them is a start date.
+  keywords:
+    - '\bstart(?:s|ing)?\b(?!-?up)'
+    - '\bcommenc\w*'
+    - '\bintake\b'
+    - '\bcohorts?\b'
+    - '\binizi(?:o|a|ano|era|erà|are)\b'
+    - '\bpartenz[ae]\b'
+    - '\bingresso\b'
+    - '\bdecorrenza\b'
+    - '\bcoorte\b'
+    - '\bedizione\b'
+    - '\bd[ée]but\b'
+    - '\bd[ée]marrage\b'
+    - '\bprise de poste\b'
+    - '\bbeginn\b'
+    - '\beintritt\w*'
+    - '\bstarttermin\b'
+    - '\binicio\b'
+    - '\bincorporaci[óo]n\b'
+  # "Weak" keywords: only count when followed by a month/date WITH an explicit year.
+  weak_keywords:
+    - '\bfrom\b'
+    - '\bbeginning\b'
+    - '\bavailab(?:le|ility)\b'
+    - '\bjoin(?:ing)?\b'
+    - '\bda\b'
+    - '\bdal\b'
+    - '\ba partire da\w*'
+    - '\bparte\b'
+    - '\b[àa] partir d[eu]\b'
+    - '\bd[èe]s\b'
+    - '\bab\b'
+    - '\bdesde\b'
+    - '\ba partir de\b'
+  # Ignore a keyword when these appear just before it (graduation dates, publication dates).
+  context_skip:
+    - '\bgraduat(?:ing|ion|ed)\b[^.]{0,25}$'
+    - '\b(?:si\s+laure\w*|laureand\w*|laurearsi|laurea\s+(?:prevista|attesa))\b[^.]{0,30}$'
+    - '\bdiplom\w*[^.]{0,20}$'
+    - '\bdegree\b[^.]{0,20}$'
+    - '\b(?:aperto|aperta|open(?:ed)?|online|live)\s*$'
+    - '\b(?:pubblicat\w*|posted|published|aggiornat\w*|updated)\s*$'
+    - '\b(?:scadenza|deadline|chiude|closing|closes|apply)\b[^.]{0,15}$'
+  context_skip_chars: 35
+  # Any of these anywhere = start is flexible: keep, no flag.
+  flexible:
+    - '\bflexib\w*\s+(?:start|starting|date|dates|timing)'
+    - 'start(?:ing)?(?:\s+dates?)?\s*[:\-]?\s*(?:is\s+|are\s+)?(?:very\s+)?flexib\w*'
+    - '\basap\b'
+    - 'as soon as possible'
+    - '\bimmediate(?:ly)?\s+start|\bstart\s+immediately'
+    - '\brolling\s+(?:start|starts|intake|basis)'
+    - '(?:various|multiple|several|different)\s+start(?:ing)?\s+dates'
+    - 'start\s+dates?\s+(?:throughout|all)\s+(?:the\s+)?year'
+    - '\byear[- ]round\b'
+    - 'inizio\s+flessibil\w*'
+    - 'data\s+di\s+inizio\s+flessibil\w*'
+    - 'date\s+(?:di\s+inizio\s+)?flessibili'
+    - 'date\s+di\s+inizio\s+variabili'
+    - '\b(?:il\s+)?prima\s+possibile\b'
+    - 'inizio\s+(?:da\s+)?subito'
+    - 'inizio\s+immediato'
+    - 'disponibilit[àa]\s+immediata'
+    - "tutto\\s+l'anno"
+    - "d[èe]s\\s+que\\s+possible"
+    - 'date\s+de\s+d[ée]but\s+flexible'
+    - 'd[ée]but\s+flexible'
+    - '\bab\s+sofort\b'
+    - '\bflexible[rn]?\s+(?:start|beginn|eintritt)'
+    - '\blo\s+antes\s+posible\b'
+    - 'incorporaci[óo]n\s+inmediata'
+    - 'fecha\s+de\s+inicio\s+flexible'
+  # Direct summer-only signals ({year} = year of summer_from).
+  summer_title_patterns:
+    - '\bsummer\b.{0,40}\b{year}\b'
+    - '\b{year}\b.{0,40}\bsummer\b'
+    - '\bestiv[oa]\b.{0,40}\b{year}\b'
+  summer_text_patterns:
+    - '\bsummer\s+(?:\d{4}\s+)?(?:internships?|interns?|analysts?|associates?|program(?:me)?s?|placements?)\b(?:\s+program(?:me)?)?\s*[-–:(]?\s*(?:in\s+)?{year}\b'
+    - '\b{year}\s+summer\s+(?:internships?|interns?|analysts?|program(?:me)?s?)\b'
+    - '\bstage\s+estiv[oi]\b.{0,20}\b{year}\b'
+  summer_unless:
+    - 'graduat\w*'
+    - 'laure\w*'
+  months:
+    1: [january, jan, gennaio, gen, janvier, janv, januar, jänner, enero, ene, januari]
+    2: [february, feb, febbraio, février, fevrier, févr, fevr, februar, febrero, februari]
+    3: [march, mar, marzo, mars, märz, maerz, maart]
+    4: [april, apr, aprile, avril, avr, abril, abr]
+    5: [may, maggio, mag, mai, mayo, mei]
+    6: [june, jun, giugno, giu, juin, juni, junio]
+    7: [july, jul, luglio, lug, juillet, juli, julio]
+    8: [august, aug, agosto, ago, août, aout, augustus]
+    9: [september, sept, sep, settembre, set, septembre, septiembre]
+    10: [october, oct, ottobre, ott, octobre, oktober, octubre, okt]
+    11: [november, nov, novembre, noviembre]
+    12: [december, dec, dicembre, dic, décembre, decembre, dezember, diciembre, dez]
+  # Seasons / halves. `needs_year: true` = only counts with an explicit year.
+  periods:
+    summer: {months: [6, 9], words: [summer, estate, été, sommer, verano, zomer]}
+    spring: {months: [3, 5], words: [spring, primavera, printemps, frühling, frühjahr, voorjaar]}
+    autumn: {months: [9, 11], words: [autumn, fall, autunno, automne, herbst, otoño, najaar]}
+    winter: {months: [1, 3], words: [winter, inverno, hiver, invierno]}
+    first_half:
+      months: [1, 6]
+      needs_year: true
+      words: [first half, primo semestre, premier semestre, primer semestre, early, inizio]
+    second_half:
+      months: [7, 12]
+      needs_year: true
+      words: [second half, secondo semestre, second semestre, segundo semestre, late, fine]
+
+# ---------------------------------------------------------------------------------------
+# Experience (code reads `min` / `max` named groups from these patterns)
+# ---------------------------------------------------------------------------------------
+experience:
+  enabled: true
+  fields: [title, raw_text]
+  reject_min_years: 3
+  flag_min_years: 1
+  ids: {reject: experience_too_senior, flag: experience_stretch}
+  reasons:
+    reject: 'asks for {years}+ years of experience'
+    flag: 'stretch: asks for {years}+ year(s) of experience'
+  patterns:
+    - '\b(?P<min>\d{1,2})\s*\+\s*(?:years?|yrs|anni|ans|jahre|años|jaar)\b'
+    - '\b(?:at\s+least|a\s+minimum\s+of|minimum(?:\s+of)?|min\.?|almeno|minimo|au\s+moins|mindestens|al\s+menos|minimaal)\s+(?P<min>\d{1,2})\s*\+?\s*(?:years?|yrs|anni|ans|jahre|años|jaar)\b'
+    - '\b(?P<min>\d{1,2})\s*(?:-|–|to|a)\s*(?P<max>\d{1,2})\s*(?:years?|yrs|anni|ans|jahre|años|jaar)\b'
+    - '\b(?P<min>\d{1,2})\s*(?:years?|yrs|anni|ans|jahre|años|jaar)\s+(?:of\s+|di\s+|d''|de\s+)?(?:\w+\s+){0,3}?(?:experience|esperienza|exp[ée]rience|berufserfahrung|erfahrung|experiencia|werkervaring)\b'
+    - '\b(?:experience|esperienza|exp[ée]rience|erfahrung|experiencia)\s*(?:of|di|de|:|-)?\s*(?:at\s+least\s+|almeno\s+)?(?P<min>\d{1,2})\s*\+?\s*(?:years?|yrs|anni|ans|jahre|años)\b'
+    - '\b(?:chiede|chiedono|richiede|richiedono|requires?|requiring|asks?\s+for)\s+(?:circa\s+|about\s+|around\s+)?(?P<min>\d{1,2})\s*(?:\+|(?:-|–)\s*\d{1,2})?\s*(?:years?|anni)\b'
+  # Just before the number: "up to 3 years" is not a requirement.
+  negations:
+    - '\b(?:up\s+to|fino\s+a|max(?:imum)?|massimo|meno\s+di|less\s+than|under|jusqu''[àa]|bis\s+zu|hasta)\s*$'
+  # Anywhere in the same sentence: downgrade reject -> flag.
+  soft:
+    - '\bpreferred\b|\bpreferabl[ey]\b|\bideally\b|\ba plus\b|nice[- ]to[- ]have|\bpreferibil\w*|\bgradit[oa]\b|\bdesirable\b|\bvon vorteil\b|\bsouhait[ée]e?\b'
+
+# ---------------------------------------------------------------------------------------
+# Location (structural: uses country codes; patterns for sponsorship / remote here)
+# ---------------------------------------------------------------------------------------
+location:
+  enabled: true
+  allowed_countries: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU,
+                      MT, NL, PL, PT, RO, SK, SI, ES, SE, IS, LI, NO, CH, EU]
+  uk_countries: [GB]
+  ids: {uk: location_uk_visa, outside: location_outside_europe, unknown: location_unknown}
+  actions: {uk: reject, outside: reject, unknown: flag}
+  reasons:
+    uk: 'UK visa: EU citizens need a visa and sponsorship is not stated'
+    outside: 'outside Europe ({country})'
+    unknown: 'location unknown'
+  remote_patterns:
+    - '\bremote\b'
+    - '\bremot[oa]\b'
+    - '\bfully[- ]remote\b'
+    - '\bt[ée]l[ée]travail\b'
+    - '\bhome[- ]office\b'
+    - '\banywhere\b'
+  sponsorship_patterns:
+    - 'visa\s+sponsorship\s+(?:is\s+|will\s+be\s+)?(?:available|provided|offered|possible)'
+    - '(?:we|company)\s+(?:can|will|do|are\s+able\s+to)\s+(?:provide\s+)?(?:visa\s+)?sponsor'
+    - '\bsponsorship\s+(?:is\s+)?available\b'
+    - '\boffer(?:s|ing)?\s+visa\s+sponsorship\b'
+    - '\bwe\s+sponsor\s+visas?\b'
+    - 'sponsorizzazione\s+(?:del\s+)?visto\s+(?:disponibile|offerta|prevista)'
+  sponsorship_negations:
+    - '\bno\s+(?:visa\s+)?sponsorship\b'
+    - '\bnot\s+(?:be\s+)?(?:able|possible)\s+to\s+(?:provide\s+)?(?:visa\s+)?sponsor'
+    - '\bunable\s+to\s+(?:provide\s+)?(?:visa\s+)?sponsor'
+    - '\bcan(?:not|''t)\s+(?:provide\s+)?(?:visa\s+)?sponsor'
+    - '\bdo(?:es)?\s+not\s+(?:offer|provide)\s+(?:visa\s+)?sponsorship'
+    - '\bwithout\s+(?:the\s+need\s+for\s+)?(?:visa\s+)?sponsorship'
+    - '\bsponsorship\s+(?:is\s+)?not\s+(?:available|provided|offered)'
+    - '\bnon\s+dichiarat[ao]\b'
+
+# ---------------------------------------------------------------------------------------
+# Languages other than Italian / English
+# ---------------------------------------------------------------------------------------
+languages:
+  enabled: true
+  fields: [title, raw_text]
+  ids: {required: language_required, soft: language_nice_to_have}
+  reasons:
+    required: '{lang} required'
+    soft: '{lang} mentioned as a plus or not clearly required'
+  allowed: [english, inglese, anglais, englisch, inglés, ingles, engels, italian, italiano,
+            italien, italienisch, italiano]
+  names:
+    French: [french, francese, français, francais, französisch, franzosisch, francés, frances, frans]
+    German: [german, tedesco, deutsch, allemand, alemán, aleman, duits]
+    Spanish: [spanish, spagnolo, español, espanol, castellano, espagnol, spanisch, spaans]
+    Dutch: [dutch, olandese, nederlands, néerlandais, neerlandais, niederländisch, neerlandés, flemish, fiammingo]
+    Portuguese: [portuguese, portoghese, português, portugues, portugais, portugiesisch, portugués]
+    Polish: [polish, polacco, polski, polonais, polnisch]
+    Swedish: [swedish, svedese, svenska, suédois, schwedisch, sueco]
+    Danish: [danish, danese, dansk, danois, dänisch, danés]
+    Norwegian: [norwegian, norvegese, norsk, norvégien, norwegisch]
+    Finnish: [finnish, finlandese, suomi, finnois, finnisch]
+    Czech: [czech, ceco, čeština, tchèque, tschechisch]
+    Greek: [greek, greco, grec, griechisch]
+    Romanian: [romanian, rumeno, roumain, rumänisch]
+    Hungarian: [hungarian, ungherese, hongrois, ungarisch]
+    Russian: [russian, russo, russe, russisch]
+    Turkish: [turkish, turco, turc, türkisch]
+    Arabic: [arabic, arabo, arabe, arabisch]
+    Chinese: [chinese, mandarin, cinese, chinois, chinesisch]
+    Japanese: [japanese, giapponese, japonais, japanisch]
+  # {lang} = any language above (non-capturing group). Which language matched is detected
+  # from the matched text.
+  required_patterns:
+    - '\b(?:fluent|fluency|fluently|native|mother[- ]tongue|bilingual|business[- ]fluent|business[- ]level|full\s+professional|professional\s+working|proficient|excellent|very\s+good|strong|advanced|perfect)\b(?:\s+(?:written|spoken|verbal|oral|and|&|command|knowledge|skills?|level|of|in|the|language|communication))*\s+(?:\w+\s*(?:,|and|&)\s+)?{lang}\b'
+    - '\b{lang}\b\s*(?:language\s+)?(?:\(|:|-|–|,)?\s*(?:level\s+|niveau\s+|livello\s+)?(?:c1|c2|b2\+?|native|fluent|fluency|business[- ]fluent|mother\s+tongue|madrelingua|fluente|courant|bilingue|verhandlungssicher|fließend|fliessend|nativo|fluido|vloeiend)\b'
+    - '\b{lang}\b(?:\s+(?:o|or|e|and)\s+{lang}\b)?(?:\s+(?:language|skills|proficiency|knowledge|is|are|will\s+be))*\s+(?:required|mandatory|essential|a\s+must|must|needed|necessary|compulsory|obbligatori[oa]|richiest[oa]|necessari[oa]|indispensabile|requis|exig[ée]|obligatoire|indispensable|erforderlich|vorausgesetzt|zwingend|imprescindible|obligatorio|requerido|vereist)\b'
+    - '\b(?:must|need\s+to|required\s+to|have\s+to)\s+(?:be\s+able\s+to\s+)?(?:speak|write|read|communicate|work)\s+(?:\w+\s+){0,3}?(?:in\s+)?{lang}\b'
+    - '\b(?:fluent|fluency|proficien\w*|command|competen\w*|mastery)\s+(?:in|of|with)\s+(?:the\s+)?(?:\w+\s*(?:,|and|&)\s+)?{lang}\b'
+    - '\b(?:ottima|eccellente|fluente|perfetta|ottimo)\s+(?:conoscenza|padronanza)\s+(?:della\s+lingua\s+|del\s+|dello\s+)?(?:\w+\s+(?:e|ed)\s+)?{lang}\b'
+    - '\b(?:richiest[oa]|necessari[oa]|obbligatori[oa])\s+(?:anche\s+)?(?:la\s+conoscenza\s+(?:del|dello|della\s+lingua)\s+|il\s+|lo\s+|la\s+)?{lang}\b'
+    - '\b(?:richiesta|requisito)\s+(?:di\s+|del\s+|dello\s+)?{lang}\b'
+    - '\b{lang}(?:\s+(?:or|o|and|e)\s+{lang})?[- ]speakers?\b'
+    - '\b(?:parfaite\s+|excellente\s+|bonne\s+)?ma[îi]trise\s+(?:du\s+|de\s+l''|de\s+la\s+langue\s+)?{lang}'
+    - '\b(?:sehr\s+gute|fließende|fliessende|verhandlungssichere|exzellente|ausgezeichnete)\s+(?:\w+-?\s+(?:und)\s+)?{lang}'
+    - '\b(?:dominio|nivel\s+(?:alto|avanzado|nativo))\s+(?:de\s+|del\s+)?{lang}'
+  # Same sentence: downgrade to a flag (nice-to-have or hedged).
+  soft:
+    - '\ba\s+plus\b|\bplus\b|nice[- ]to[- ]have|\bpreferred\b|\bpreferabl[ey]\b|\bideally\b|\badvantage\w*|\bbonus\b|\bbeneficial\b|\bdesirable\b|\bwelcome\b|\bappreciated\b'
+    - '\bnot\s+(?:required|mandatory|necessary|essential)\b|\bbut\s+not\s+(?:required|essential)\b|\bhelpful\b'
+    - '\bgradit[oa]\b|\bpreferibil\w*|\bvantaggio\b|\bapprezzat\w*|\bnon\s+(?:è\s+|e\s+)?(?:richiest|necessari|obbligatori)\w*'
+    - '\bun\s+atout\b|\bappr[ée]ci[ée]e?\b|\bsouhait[ée]e?\b|\bvon\s+vorteil\b|\bwünschenswert\b|\bse\s+valorar[áa]\b|\bvalorable\b|\bdeseable\b|\bpluspunt\b|\bniet\s+vereist\b'
+    - '\bprobabil\w*|\blikely\b|\bmaybe\b|\bpossibly\b|\bverific\w*|\bcontroll\w*'
+  # Just before the match: "English or French" means English is enough -> skip.
+  alternatives_before:
+    - '\b(?:english|inglese|anglais|englisch|ingl[ée]s|engels|italian|italiano)\s*(?:or|o|ou|oder|/)\s*$'
+
+# Posting fully written in another language (stopword ratio heuristic) -> flag only.
+posting_language:
+  enabled: true
+  id: posting_language
+  action: flag
+  reason: 'posting in {lang}'
+  min_tokens: 40
+  min_ratio: 0.12
+  flag_languages: [French, German, Spanish, Dutch, Portuguese]
+  stopwords:
+    English: [the, and, of, to, with, for, you, we, our, your, is, are, will, be, on, this, that, have, from, team, as, an, or, who]
+    Italian: [il, lo, gli, di, che, per, con, una, uno, del, della, nel, sono, alla, delle, dei, anche, ed, questo, nostro, nostra, si, non, più]
+    French: [le, les, des, du, et, est, une, pour, dans, sur, vous, nous, avec, au, aux, ce, qui, être, votre, sont, notre, nos, vos, ou]
+    German: [der, die, das, und, ist, mit, für, sie, wir, ein, eine, zu, den, dem, von, auf, bei, auch, im, ihre, nicht, unser, unsere, oder]
+    Spanish: [el, los, las, y, para, con, una, por, que, es, se, como, su, sus, nuestro, nuestra, más, al, del, lo, tu]
+    Dutch: [het, een, van, voor, met, je, wij, jij, zijn, op, te, ook, bij, niet, dat, naar, ons, onze, jouw, wordt, aan]
+    Portuguese: [os, as, um, uma, para, com, não, são, você, nós, nosso, nossa, seu, sua, mais, também, pelo, pela]
+
+# Internships in these countries need a university agreement and enrollment for the whole
+# duration (MSc ends July 2027).
+enrollment:
+  enabled: true
+  id: enrollment_agreement
+  action: flag
+  reason: '{country}: convention de stage / university agreement needed; a 6-month internship must start by Feb to end by July 2027'
+  countries:
+    FR: France
+    ES: Spain
+  internship_types: [Stage]
+  internship_patterns:
+    - '\bintern\w*'
+    - '\bstage\b'
+    - '\bstagiaire\b'
+    - '\bpr[áa]cticas\b'
+    - '\bbecari[oa]\b'
+    - '\btrainee\w*'
+    - '\btirocini\w*'
+    - '\balternance\b'
+
+# ---------------------------------------------------------------------------------------
+# Plain regex rules
+# ---------------------------------------------------------------------------------------
+regex_rules:
+  - id: graduation_year
+    action: reject
+    reason: 'graduation year incompatible (MSc graduating July 2027)'
+    fields: [title, raw_text]
+    patterns:
+      - '\bgraduat\w*\s+(?:date\s+)?(?:in\s+|from\s+)?(?:(?:spring|summer|fall|autumn|winter|january|may|june|july|december)\s+)?(?:of\s+)?20(?:2[89]|[3-9]\d)\b'
+      - '\bclass\s+of\s+20(?:2[89]|[3-9]\d)\b'
+      - '\b(?:expected\s+)?graduation(?:\s+date)?\s*(?::|in|of|-)?\s*(?:\w+\s+)?20(?:2[89]|[3-9]\d)\b'
+      - '\b20(?:2[89]|[3-9]\d)\s+graduat\w*'
+      - '\blaure\w*\s+(?:prevista\s+)?(?:nel(?:l'')?\s+|in\s+)?(?:\w+\s+)?20(?:2[89]|[3-9]\d)\b'
+      - '\bdipl[ôo]m[ée]e?s?\s+en\s+20(?:2[89]|[3-9]\d)\b'
+    unless:
+      - '\b2027\b'
+      - '\bor\s+(?:earlier|before)\b'
+
+  - id: penultimate_year
+    action: reject
+    reason: 'penultimate-year students only (MSc final year)'
+    fields: [title, raw_text]
+    patterns:
+      - '\bpenultimate[- ]year\b'
+      - '\bpre[- ]?final[- ]year\b'
+      - '\bsecond[- ]to[- ]last\s+year\b'
+      - '\bpenultim[oa]\s+anno\b'
+      - '\bavant[- ]derni[èe]re\s+ann[ée]e\b'
+      - '\bvorletzte[nm]?\s+(?:semester|studienjahr|jahr)\b'
+    unless:
+      - '(?:or|and|/|o|e)\s+(?:the\s+)?(?:final|last)[- ]year'
+      - '\b(?:final|last)[- ]year\s+(?:or|and|/)'
+      - '\b(?:o|e)\s+ultimo\s+anno|\bultimo\s+anno\s+(?:o|e)\b'
+
+  - id: return_to_studies
+    action: reject
+    reason: 'must return to university after the internship'
+    fields: [title, raw_text]
+    patterns:
+      - '\b(?:must|will|should|need\s+to|required\s+to|expected\s+to)\s+(?:be\s+)?return(?:ing)?\s+to\s+(?:your\s+|their\s+|full[- ]time\s+)*(?:studies|study|university|school|education|degree|academic)'
+      - '\breturn(?:ing)?\s+to\s+(?:your\s+|their\s+|full[- ]time\s+)*(?:studies|university|school|education)\s+(?:after|following|upon|at\s+the\s+end\s+of)\s+(?:the\s+|your\s+)?(?:internship|placement)'
+      - '\b(?:at\s+least|still\s+have)\s+(?:one|1|a)\s+(?:more\s+|full\s+)?(?:semester|year|term)\s+(?:\w+\s+){0,4}?(?:after|following|remaining\s+after)\s+(?:the\s+|your\s+)?(?:internship|placement)'
+      - '\b(?:one|1|a)\s+(?:full\s+)?(?:semester|year|term)\s+(?:of\s+(?:study|studies)\s+)?(?:remaining|left)\s+after'
+      - '\brientrare\s+(?:all[ae]?\s*|in\s+)?(?:universit|studi)'
+      - '\bretourner\s+(?:en|[àa]\s+l'')\s*(?:cours|[ée]cole|universit[ée])'
+
+  - id: phd_only
+    action: reject
+    reason: 'PhD-only role'
+    fields: [title, raw_text]
+    patterns:
+      - '\b(?:currently\s+)?(?:enrolled|pursuing|registered)\s+(?:in\s+)?(?:a\s+)?ph\.?\s?d\b'
+      - '\bph\.?\s?d\.?\s+(?:degree\s+)?(?:is\s+)?(?:required|mandatory|needed)\b'
+      - '\bph\.?\s?d\.?\s+(?:students?|candidates?|researchers?)\s+only\b'
+      - '\bonly\s+(?:open\s+to\s+)?ph\.?\s?d\b'
+      - '\bph\.?\s?d\.?\s+(?:intern|internship|residency|student\s+researcher)\b'
+      - '\bmust\s+(?:be|have)\s+(?:\w+\s+){0,4}?ph\.?\s?d\b'
+      - '\bdottorand[oi]\b'
+      - '\bdottorato\s+(?:richiesto|in\s+corso)\b'
+      - '\bdoctoral\s+(?:students?|candidates?)\b'
+      - '\bdoctorants?\b'
+    unless_scope: field
+    unless:
+      - '\b(?:ms|msc|m\.sc|master''?s?|masters|magistrale|mba)\b\W{0,6}(?:or|and|/|o|e|ou|oder)\W{0,6}(?:ph\.?\s?d|doctora)'
+      - '\bph\.?\s?d\.?\W{0,6}(?:or|and|/|o|e|ou|oder)\W{0,6}(?:ms|msc|m\.sc|master|masters|magistrale)\b'
+      - '\b(?:master''?s?|msc|m\.sc)\s+(?:students?|candidates?)\b'
+
+  - id: posting_language_note
+    action: flag
+    reason: 'description (partly) in another language'
+    fields: [raw_text]
+    patterns:
+      - '\b(?:annuncio|descrizione|testo|posting|job\s+description|description)\s+(?:\w+\s+){0,3}?in\s+(?:francese|tedesco|spagnolo|olandese|portoghese|french|german|spanish|dutch|portuguese)\b'
