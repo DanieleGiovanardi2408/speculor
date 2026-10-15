@@ -385,11 +385,20 @@ DEFAULT_TITLE_FILTER = (
 
 
 def title_matches(title: str, keywords: list[str] | tuple[str, ...] | None) -> bool:
-    """Case-insensitive word-prefix match: 'intern' matches 'Intern', 'Internship', 'interns'."""
+    """Case-insensitive whole-word match with common inflections.
+
+    'intern' matches 'Intern', 'Internship', 'interns' but NOT 'International' or 'Internal'.
+    """
     if not keywords:
         return True
     t = title.lower()
-    return any(re.search(rf"(?<![a-z0-9]){re.escape(k.lower().strip())}", t) for k in keywords)
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(k.lower().strip())}{_SUFFIXES}(?![a-z0-9])", t)
+        for k in keywords
+    )
+
+
+_SUFFIXES = r"(?:s|es|ship|ships|in|innen|e|i)?"
 
 
 def parse_datetime(value: Any) -> datetime | None:

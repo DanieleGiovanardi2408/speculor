@@ -115,3 +115,11 @@ drafts) also accept comma-separated values; `priority=none` matches unscored pos
 unknown id, 422 validation, 409 editing a sent draft, 501 when an optional component (LLM
 packs, manual add) is not installed, 502 when the LLM / fetch fails. Auth errors: 401 missing,
 invalid or expired token, 403 email not allowed.
+
+### Notes for clients
+
+- `RunSummary.stats` shape: `{sources: {<source>: {boards, fetched, new, errors}}, new, changed,
+  closed, reopened, rejected, flagged, errors: [{source, error}], llm: {scoring: {...}, packs:
+  {...}}}` (counts only, never names).
+- `StatsRow.interview_rate` is a ratio in `[0, 1]`.
+- `zone` values: `Italia`, `Europa`, `Altro`.

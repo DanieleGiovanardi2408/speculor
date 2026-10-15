@@ -190,6 +190,98 @@ _CITY_COUNTRY: dict[str, str] = {
     "boston": "US",
 }
 
+# Non-European cities/regions seen on ATS boards (so they are rejected, not "unknown").
+_CITY_COUNTRY.update(
+    {
+        "washington": "US",
+        "mountain view": "US",
+        "palo alto": "US",
+        "menlo park": "US",
+        "chicago": "US",
+        "austin": "US",
+        "los angeles": "US",
+        "denver": "US",
+        "atlanta": "US",
+        "miami": "US",
+        "dallas": "US",
+        "houston": "US",
+        "sunnyvale": "US",
+        "san jose": "US",
+        "new jersey": "US",
+        "california": "US",
+        "texas": "US",
+        "illinois": "US",
+        "massachusetts": "US",
+        "connecticut": "US",
+        "greenwich": "US",
+        "stamford": "US",
+        "toronto": "CA",
+        "montreal": "CA",
+        "montréal": "CA",
+        "vancouver": "CA",
+        "hong kong": "HK",
+        "seoul": "KR",
+        "south korea": "KR",
+        "korea": "KR",
+        "tokyo": "JP",
+        "shanghai": "CN",
+        "beijing": "CN",
+        "shenzhen": "CN",
+        "taipei": "TW",
+        "taiwan": "TW",
+        "sydney": "AU",
+        "melbourne": "AU",
+        "mumbai": "IN",
+        "bangalore": "IN",
+        "bengaluru": "IN",
+        "hyderabad": "IN",
+        "pune": "IN",
+        "gurgaon": "IN",
+        "gurugram": "IN",
+        "new delhi": "IN",
+        "chennai": "IN",
+        "doha": "QA",
+        "qatar": "QA",
+        "dubai": "AE",
+        "abu dhabi": "AE",
+        "riyadh": "SA",
+        "saudi arabia": "SA",
+        "tel aviv": "IL",
+        "são paulo": "BR",
+        "sao paulo": "BR",
+        "mexico city": "MX",
+        "buenos aires": "AR",
+        "bogotá": "CO",
+        "bogota": "CO",
+        "jakarta": "ID",
+        "manila": "PH",
+        "kuala lumpur": "MY",
+        "bangkok": "TH",
+        "ho chi minh": "VN",
+        "cairo": "EG",
+        "lagos": "NG",
+        "nairobi": "KE",
+        "johannesburg": "ZA",
+        "cape town": "ZA",
+        "auckland": "NZ",
+        "istanbul": "TR",
+        "kuwait": "KW",
+        "santiago": "CL",
+        "chile": "CL",
+        "west palm beach": "US",
+        "singapore": "SG",
+        "nantes": "FR",
+        "strasbourg": "FR",
+        "niort": "FR",
+        "lille": "FR",
+        "bordeaux": "FR",
+        "nice": "FR",
+        "montpellier": "FR",
+        "zug": "CH",
+        "eindhoven": "NL",
+    }
+)
+
 EU_EEA_CH = {
     "AT",
     "BE",
@@ -230,29 +322,42 @@ def _fold(text: str) -> str:
 
 
 def country_code(*texts: str | None) -> str | None:
-    """Best-effort ISO code from country/location strings. Multi-country -> first match."""
+    """Best-effort ISO code from country/location strings.
+
+    Multi-location strings ("London, New York, Singapore") resolve to the first European
+    location if there is one (EU/EEA/CH first, then GB), else the first match.
+    """
     for text in texts:
         if not text:
             continue
         t = _fold(text)
-        if t.upper() in EU_EEA_CH | {"GB", "US"} and len(t) == 2:
+        if len(t) == 2 and t.upper() in EU_EEA_CH | {"GB", "US"}:
             return t.upper()
         if t in _COUNTRY_ALIASES:
             return _COUNTRY_ALIASES[t]
-        parts = [p.strip() for p in re.split(r"[,/;|()\-–]| o | or ", t) if p.strip()]
-        for part in parts:
-            if part in _COUNTRY_ALIASES:
-                return _COUNTRY_ALIASES[part]
-        for part in parts:
-            if part in _CITY_COUNTRY:
-                return _CITY_COUNTRY[part]
-        for alias, code in _COUNTRY_ALIASES.items():
-            if len(alias) > 3 and re.search(rf"\b{re.escape(alias)}\b", t):
-                return code
-        for city, code in _CITY_COUNTRY.items():
-            if re.search(rf"\b{re.escape(city)}\b", t):
-                return code
+        found = _codes_in(t)
+        if found:
+            for code in found:
+                if code in EU_EEA_CH:
+                    return code
+            return "GB" if "GB" in found else found[0]
     return None
+
+
+def _codes_in(t: str) -> list[str]:
+    """All country codes mentioned in a location string, in order of appearance."""
+    parts = [p.strip() for p in re.split(r"[,/;|()\-–]| o | or | and | e ", t) if p.strip()]
+    codes: list[str] = []
+    for part in parts:
+        code = _COUNTRY_ALIASES.get(part) or _CITY_COUNTRY.get(part)
+        if code is None:
+            for alias, c in (*_COUNTRY_ALIASES.items(), *_CITY_COUNTRY.items()):
+                if len(alias) > 3 and re.search(rf"\b{re.escape(alias)}\b", part):
+                    code = c
+                    break
+        if code is not None and code not in codes:
+            codes.append(code)
+    return codes
 
 
 def zone_for(code: str | None) -> str:

@@ -200,6 +200,10 @@ def test_title_matches() -> None:
     assert title_matches("Working Student - Data", kw)
     assert not title_matches("Senior Backend Engineer", kw)
     assert not title_matches("International Sales Lead", ["internship"])
+    assert not title_matches("International PR Manager", kw)
+    assert not title_matches("Internal Control Specialist", kw)
+    assert title_matches("Werkstudentin Data", ["werkstudent"])
+    assert title_matches("Data Science Interns 2027", kw)
     assert title_matches("anything", None)
 
 
