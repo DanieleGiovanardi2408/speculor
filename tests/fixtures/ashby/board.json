@@ -1,0 +1,77 @@
+{
+ "jobs": [
+  {
+   "id": "45484473-f8e0-4457-983e-ae0ddadbfec1",
+   "title": "Junior Customer Care Representative (L.68/99)",
+   "department": "Operations",
+   "team": "Customer Care",
+   "employmentType": "FullTime",
+   "location": "Milan, Italy",
+   "secondaryLocations": [],
+   "publishedAt": "2026-09-10T10:09:59.162+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Hybrid",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "Lombardia",
+     "addressCountry": "Italy",
+     "addressLocality": "Milan"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/tascapay/45484473-f8e0-4457-983e-ae0ddadbfec1",
+   "applyUrl": "https://jobs.ashbyhq.com/tascapay/45484473-f8e0-4457-983e-ae0ddadbfec1/application",
+   "descriptionHtml": "<p>Tasca Pay is a fictional company used in Radar's test fixtures.</p><p><strong>Junior Customer Care Representative (L.68/99)</strong></p><ul><li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li></ul><ul><li>A degree in a quantitative or business field</li><li>Good written English</li></ul>",
+   "descriptionPlain": "Tasca Pay is a fictional company used in Radar's test fixtures.\n\nJunior Customer Care Representative (L.68/99)\n- Work with the team on day-to-day projects\n- Prepare short analyses and reports\n- A degree in a quantitative or business field\n- Good written English"
+  },
+  {
+   "id": "72246089-bf9d-4ff2-a54d-75ace4594856",
+   "title": "Junior Customer Care Representative",
+   "department": "Operations",
+   "team": "Customer Care",
+   "employmentType": "FullTime",
+   "location": "Milan, Italy",
+   "secondaryLocations": [],
+   "publishedAt": "2026-07-21T08:42:37.407+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Hybrid",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "Lombardia",
+     "addressCountry": "Italy",
+     "addressLocality": "Milan"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/tascapay/72246089-bf9d-4ff2-a54d-75ace4594856",
+   "applyUrl": "https://jobs.ashbyhq.com/tascapay/72246089-bf9d-4ff2-a54d-75ace4594856/application",
+   "descriptionHtml": "<p>Tasca Pay is a fictional company used in Radar's test fixtures.</p><p><strong>Junior Customer Care Representative</strong></p><ul><li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li></ul><ul><li>A degree in a quantitative or business field</li><li>Good written English</li></ul>",
+   "descriptionPlain": "Tasca Pay is a fictional company used in Radar's test fixtures.\n\nJunior Customer Care Representative\n- Work with the team on day-to-day projects\n- Prepare short analyses and reports\n- A degree in a quantitative or business field\n- Good written English"
+  },
+  {
+   "id": "45744663-4768-48d1-81c9-218eb54a2027",
+   "title": "Software Engineer III, Backend - Business Domain",
+   "department": "Tech & Product",
+   "team": "Engineering",
+   "employmentType": "FullTime",
+   "location": "Milan, Italy",
+   "secondaryLocations": [],
+   "publishedAt": "2026-01-07T08:42:52.596+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Hybrid",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "Lombardia",
+     "addressCountry": "Italy",
+     "addressLocality": "Milan"
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/tascapay/45744663-4768-48d1-81c9-218eb54a2027",
+   "applyUrl": "https://jobs.ashbyhq.com/tascapay/45744663-4768-48d1-81c9-218eb54a2027/application",
+   "descriptionHtml": "<p>Tasca Pay is a fictional company used in Radar's test fixtures.</p><p><strong>Software Engineer III, Backend - Business Domain</strong></p><ul><li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li></ul><ul><li>A degree in a quantitative or business field</li><li>Good written English</li></ul>",
+   "descriptionPlain": "Tasca Pay is a fictional company used in Radar's test fixtures.\n\nSoftware Engineer III, Backend - Business Domain\n- Work with the team on day-to-day projects\n- Prepare short analyses and reports\n- A degree in a quantitative or business field\n- Good written English"
+  }
+ ],
+ "apiVersion": "1"
+}

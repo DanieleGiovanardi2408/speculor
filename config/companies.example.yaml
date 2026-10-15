@@ -1,0 +1,67 @@
+# Radar companies config: EXAMPLE with fictional companies (the real one is config/companies.yaml,
+# gitignored). Read by radar.connectors.registry.build_connectors().
+
+# Optional. Case-insensitive word-prefix match on ATS posting titles ("intern" also matches
+# "Internship"). Postings whose title matches none of these are dropped by ATS connectors.
+# SmartRecruiters always uses a prefilter (this list, or a built-in default) because it needs one
+# request per posting to read the description.
+title_filter: [intern, internship, stage, stagiaire, tirocinio, graduate, junior, trainee, thesis,
+               werkstudent, working student, entry level, new grad, apprentice, analyst]
+
+companies:
+  # ats: greenhouse | lever | ashby | smartrecruiters | workday | none
+  # slug: the board id in the ATS URL
+  #   greenhouse      job-boards(.eu).greenhouse.io/<slug>/jobs/123    -> slug
+  #   lever           jobs(.eu).lever.co/<slug>/<uuid>                  -> slug (+ region: eu for .eu)
+  #   ashby           jobs.ashbyhq.com/<slug>/<uuid>                    -> slug
+  #   smartrecruiters jobs.smartrecruiters.com/<CompanyId>/<id>-title   -> CompanyId (case matters)
+  # region: "eu" for EU-hosted boards (Lever: switches to api.eu.lever.co; Greenhouse: informational)
+  # active: false skips the entry; seed: true means it came from the seed export
+  - name: Nebula Analytics
+    ats: greenhouse
+    slug: nebulaanalytics
+    region: null
+    active: true
+    seed: false
+  - name: Fiordo Payments
+    ats: lever
+    slug: fiordo
+    region: eu
+    active: true
+    seed: false
+  - name: Lumen Labs AI
+    ats: ashby
+    slug: lumenlabs
+    region: null
+    active: true
+    seed: false
+    title_filter: false        # per-company override: false = no title filter, or give a list
+  - name: Orbis Consulting
+    ats: smartrecruiters
+    slug: OrbisConsulting
+    region: null
+    active: true
+    seed: false
+  - name: Banca Esempio
+    ats: none                  # no supported public ATS: tracked manually / via LinkedIn
+    slug: null
+    region: null
+    active: true
+    seed: true
+    unresolved: custom careers portal   # informational only
+  - name: Vecchia Startup
+    ats: ashby
+    slug: vecchiastartup
+    region: null
+    active: false              # skipped
+    seed: false
+
+# LinkedIn public guest search. NOTE: linkedin.com/robots.txt disallows all paths for
+# non-whitelisted user agents, so this connector reports an error instead of fetching
+# (see docs/SOURCES.md). Kept here so it works if access is ever granted.
+linkedin:
+  enabled: true
+  max_details: 5               # description fetches per run
+  queries:                     # one page (up to 10 cards) per query, last 7 days
+    - {keywords: "AI engineer intern", location: "Italy"}
+    - {keywords: "data scientist intern", location: "Netherlands"}

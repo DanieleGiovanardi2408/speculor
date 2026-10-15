@@ -1,0 +1,125 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://job-boards.eu.greenhouse.io/rondinepay/jobs/4983933101",
+   "internal_job_id": 4525654101,
+   "location": {
+    "name": "Barcelona, Spain"
+   },
+   "metadata": null,
+   "id": 4983933101,
+   "updated_at": "2026-09-23T10:55:46-04:00",
+   "requisition_id": "297",
+   "title": "Credit Risk Analyst",
+   "company_name": "Rondine Pay",
+   "first_published": "2026-09-23T10:55:46-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;At Rondine Pay we build instalment payments. Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Credit Risk Analyst&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Work with the team on day-to-day projects&lt;/li&gt;&lt;li&gt;Prepare short analyses and reports&lt;/li&gt;&lt;/ul&gt;&lt;ul&gt;&lt;li&gt;A degree in a quantitative or business field&lt;/li&gt;&lt;li&gt;Good written English&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [
+    {
+     "id": 4019117101,
+     "name": "Risk",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 4009356101,
+     "name": "Barcelona",
+     "location": "Barcelona, Spain",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": "http://s101.recruiting.eu.greenhouse.io/ai_opt_out_request/job_post/4983933101/ai_opt_out"
+  },
+  {
+   "absolute_url": "https://job-boards.eu.greenhouse.io/rondinepay/jobs/4739799101",
+   "internal_job_id": 4408834101,
+   "location": {
+    "name": "Milan, Italy; Paris, Paris, France"
+   },
+   "metadata": null,
+   "id": 4739799101,
+   "updated_at": "2026-07-29T09:11:29-04:00",
+   "requisition_id": "226",
+   "title": "In-Store Operations intern - bilingual French/Italian (6-months)",
+   "company_name": "Rondine Pay",
+   "first_published": "2025-12-17T10:01:05-05:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;At Rondine Pay we build instalment payments. Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;In-Store Operations intern - bilingual French/Italian (6-months)&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Work with the team on day-to-day projects&lt;/li&gt;&lt;li&gt;Prepare short analyses and reports&lt;/li&gt;&lt;/ul&gt;&lt;ul&gt;&lt;li&gt;A degree in a quantitative or business field&lt;/li&gt;&lt;li&gt;Good written English&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [
+    {
+     "id": 4019103101,
+     "name": "Sales",
+     "child_ids": [],
+     "parent_id": 4019118101
+    }
+   ],
+   "offices": [
+    {
+     "id": 4009355101,
+     "name": "Milan",
+     "location": "Milan, Italy",
+     "child_ids": [],
+     "parent_id": null
+    },
+    {
+     "id": 4009357101,
+     "name": "Paris",
+     "location": "Paris, Paris, France",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": "http://s101.recruiting.eu.greenhouse.io/ai_opt_out_request/job_post/4739799101/ai_opt_out"
+  },
+  {
+   "absolute_url": "https://job-boards.eu.greenhouse.io/rondinepay/jobs/4990112101",
+   "internal_job_id": 4529653101,
+   "location": {
+    "name": "Wollongong, New South Wales, Australia"
+   },
+   "metadata": null,
+   "id": 4990112101,
+   "updated_at": "2026-10-14T00:36:11-04:00",
+   "requisition_id": "298",
+   "title": "2 x Full Stack Software Engineer - JavaScript Environment",
+   "company_name": "Rondine Pay",
+   "first_published": "2026-10-08T00:01:55-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;At Rondine Pay we build instalment payments. Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Rondine Pay is a fictional company used in Radar&#x27;s test fixtures.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;2 x Full Stack Software Engineer - JavaScript Environment&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Work with the team on day-to-day projects&lt;/li&gt;&lt;li&gt;Prepare short analyses and reports&lt;/li&gt;&lt;/ul&gt;&lt;ul&gt;&lt;li&gt;A degree in a quantitative or business field&lt;/li&gt;&lt;li&gt;Good written English&lt;/li&gt;&lt;/ul&gt;",
+   "departments": [
+    {
+     "id": 4019113101,
+     "name": "Engineering",
+     "child_ids": [],
+     "parent_id": 4019119101
+    }
+   ],
+   "offices": [
+    {
+     "id": 4009359101,
+     "name": "Wollongong",
+     "location": "Wollongong, New South Wales, Australia",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": "http://s101.recruiting.eu.greenhouse.io/ai_opt_out_request/job_post/4990112101/ai_opt_out"
+  }
+ ],
+ "meta": {
+  "total": 3
+ }
+}

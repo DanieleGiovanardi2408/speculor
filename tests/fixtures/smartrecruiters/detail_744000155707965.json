@@ -1,0 +1,185 @@
+{
+ "id": "744000155707965",
+ "name": "Intern Consultant (all genders)",
+ "uuid": "84591536-edd5-4bd7-9ab7-3d510d276de6",
+ "jobId": "2aabdba3-0f02-41e2-9661-3cadff29eefd",
+ "jobAdId": "3af31525-bc52-4d7a-9158-b16530d83d11",
+ "defaultJobAd": true,
+ "refNumber": "1126",
+ "company": {
+  "name": "Altura Consulting",
+  "identifier": "AlturaConsulting"
+ },
+ "location": {
+  "city": "Kyiv",
+  "country": "ua",
+  "postalCode": "01001",
+  "remote": false,
+  "hybrid": false,
+  "fullLocation": "Kyiv, , Ukraine"
+ },
+ "customField": [
+  {
+   "fieldId": "5d9336bc46c05d6ef6110327",
+   "fieldLabel": "Department",
+   "valueId": "1629270",
+   "valueLabel": "Not specified (default)"
+  },
+  {
+   "fieldId": "5d9336bc46c05d6ef6110326",
+   "fieldLabel": "Brands",
+   "valueId": "default",
+   "valueLabel": "Altura Consulting"
+  },
+  {
+   "fieldId": "5e4cf65067f7bf29cd43468b",
+   "fieldLabel": "Migrated from taloom",
+   "valueId": "754d46d7-d569-46da-b93a-07c20c24e239",
+   "valueLabel": "Migrated"
+  },
+  {
+   "fieldId": "5ede27a8f2759978170e6b21",
+   "fieldLabel": "Select standard Be-Claim: Be...",
+   "valueId": "0716131f-91d8-41f3-ba79-13c1eb56a534",
+   "valueLabel": "authentic."
+  },
+  {
+   "fieldId": "5e4b978a620ec92aa06415a6",
+   "fieldLabel": "Type",
+   "valueId": "3e60dc39-7c66-4fac-9d6b-f811cdeb97d3",
+   "valueLabel": "Job"
+  },
+  {
+   "fieldId": "5ede3391318d407ba2543b07",
+   "fieldLabel": "Job location",
+   "valueId": "73aa8cc3-7f8f-4b87-a94b-8b9a15dfe876",
+   "valueLabel": "Kyiv"
+  },
+  {
+   "fieldId": "5e4cf51d620ec92aa06415cf",
+   "fieldLabel": "Job category (access rights)",
+   "valueId": "dfa63d6e-4b99-4ee0-ac77-aad5f8cad105",
+   "valueLabel": "Consultants"
+  },
+  {
+   "fieldId": "5e4b974b8dda492796197d1c",
+   "fieldLabel": "Internal position name",
+   "valueLabel": "Intern"
+  },
+  {
+   "fieldId": "60e5998f018449163fda7256",
+   "fieldLabel": "Platform",
+   "valueId": "4f7758b7-5e7d-4fa8-b853-fc1a5e2f3333",
+   "valueLabel": "Not specified (default)"
+  },
+  {
+   "fieldId": "5e4cf8418dda492796197d43",
+   "fieldLabel": "Reward (Firstbird)",
+   "valueId": "7631fe95-a172-401d-adb9-e4c4cdf46bfa",
+   "valueLabel": "No Reward"
+  },
+  {
+   "fieldId": "5ede3184318d407ba2543aa6",
+   "fieldLabel": "Audience",
+   "valueId": "b5abc648-5c2c-445b-8e7e-c08e987e164e",
+   "valueLabel": "Consulting - Internship"
+  },
+  {
+   "fieldId": "COUNTRY",
+   "fieldLabel": "Country/Region",
+   "valueId": "ua",
+   "valueLabel": "Ukraine"
+  },
+  {
+   "fieldId": "5e4cf5849ff37623bf5e5868",
+   "fieldLabel": "Application form (Screening questions sets)",
+   "valueId": "749db466-ee31-409a-9562-e45a6907836f",
+   "valueLabel": "Consultants - incl. nationality EN"
+  },
+  {
+   "fieldId": "5f1eb28b5c2d0e36c4cff1dd",
+   "fieldLabel": "Post Job to Employee Referrals",
+   "valueId": "70a4e96e-03f9-4be4-b52a-b7cd950bfc3f",
+   "valueLabel": "Yes"
+  },
+  {
+   "fieldId": "5e4b97c684a7453214b15f73",
+   "fieldLabel": "HR country (access rights)",
+   "valueId": "a8ba88f6-ba80-4c24-a12a-f5db37c7f99c",
+   "valueLabel": "AC Ukraine"
+  },
+  {
+   "fieldId": "5ed8e97bf2759978170e5c6d",
+   "fieldLabel": "Job / Event country",
+   "valueId": "e8630fe8-2ba7-4712-94f4-9f7679c5a5fd",
+   "valueLabel": "Ukraine"
+  },
+  {
+   "fieldId": "63692ee4d82be41f8a33eb85",
+   "fieldLabel": "Expertise",
+   "valueId": "3f16787d-7459-48ac-a502-a58b8eecdc25",
+   "valueLabel": "Other"
+  }
+ ],
+ "releasedDate": "2026-10-15T09:22:34.101Z",
+ "creator": {
+  "name": "Alex Example",
+  "avatarUrl": "https://example.com/avatar.png"
+ },
+ "postingUrl": "https://jobs.smartrecruiters.com/AlturaConsulting/744000155707965-intern-consultant-all-genders-",
+ "applyUrl": "https://jobs.smartrecruiters.com/AlturaConsulting/744000155707965-intern-consultant-all-genders-?oga=true",
+ "referralUrl": "https://jobs.smartrecruiters.com/external-referrals/company/AlturaConsulting/publication/84591536-edd5-4bd7-9ab7-3d510d276de6?dcr_ci=AlturaConsulting",
+ "jobAd": {
+  "sections": {
+   "companyDescription": {
+    "title": "Company Description",
+    "text": "<p>Altura Consulting is a fictional company used in Radar's test fixtures.</p>"
+   },
+   "jobDescription": {
+    "title": "Job Description",
+    "text": "<ul><li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li></ul>"
+   },
+   "qualifications": {
+    "title": "Qualifications",
+    "text": "<ul><li>A degree in a quantitative or business field</li><li>Good written English</li></ul>"
+   },
+   "additionalInformation": {
+    "title": "Additional Information",
+    "text": "<p>We look forward to your application.</p>"
+   },
+   "videos": {
+    "title": "Videos To Watch",
+    "urls": [
+     "https://video.example/1"
+    ]
+   }
+  }
+ },
+ "active": true,
+ "visibility": "PUBLIC",
+ "industry": {
+  "id": "management_consulting",
+  "label": "Management Consulting"
+ },
+ "function": {
+  "id": "consulting",
+  "label": "Consulting"
+ },
+ "department": {
+  "id": 1629270,
+  "label": "Not specified (default)"
+ },
+ "experienceLevel": {
+  "id": "internship",
+  "label": "Internship"
+ },
+ "typeOfEmployment": {
+  "id": "intern",
+  "label": "Intern"
+ },
+ "language": {
+  "code": "en",
+  "label": "English",
+  "labelNative": "English (US)"
+ }
+}

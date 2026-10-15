@@ -1,0 +1,135 @@
+[
+ {
+  "additionalPlain": "Perks: hybrid work.\n",
+  "additional": "<div>Perks: hybrid work.</div>",
+  "categories": {
+   "commitment": "Permanent Employment",
+   "department": "Claims",
+   "location": "Madrid",
+   "team": "Claims Spain",
+   "allLocations": [
+    "Madrid"
+   ]
+  },
+  "createdAt": 1765989875523,
+  "descriptionPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "description": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "id": "355671bd-236a-4c06-ac00-3b8ffba29d93",
+  "lists": [
+   {
+    "text": "What you’ll do",
+    "content": "<li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li>"
+   },
+   {
+    "text": "What we’re looking for",
+    "content": "<li>A degree in a quantitative or business field</li><li>Good written English</li>"
+   },
+   {
+    "text": "Nice-to-have",
+    "content": "<li>A degree in a quantitative or business field</li>"
+   }
+  ],
+  "salaryRange": {
+   "min": 32000,
+   "max": 35000,
+   "currency": "EUR",
+   "interval": "per-year-salary"
+  },
+  "text": "Data Analyst",
+  "country": "ES",
+  "workplaceType": "hybrid",
+  "opening": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "openingPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "descriptionBody": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "descriptionBodyPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "hostedUrl": "https://jobs.eu.lever.co/velainsurance/355671bd-236a-4c06-ac00-3b8ffba29d93",
+  "applyUrl": "https://jobs.eu.lever.co/velainsurance/355671bd-236a-4c06-ac00-3b8ffba29d93/apply"
+ },
+ {
+  "additionalPlain": "Perks: hybrid work.\n",
+  "additional": "<div>Perks: hybrid work.</div>",
+  "categories": {
+   "department": "Product",
+   "location": "Milan",
+   "team": "Cross Domain",
+   "allLocations": [
+    "Milan"
+   ]
+  },
+  "createdAt": 1776938954699,
+  "descriptionPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "description": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "id": "c596f285-996a-448f-9ca0-326f20f1ed3b",
+  "lists": [
+   {
+    "text": "What you’ll do",
+    "content": "<li>Work with the team on day-to-day projects</li><li>Prepare short analyses and reports</li>"
+   },
+   {
+    "text": "What we’re looking for",
+    "content": "<li>A degree in a quantitative or business field</li><li>Good written English</li>"
+   },
+   {
+    "text": "Nice-to-have",
+    "content": "<li>A degree in a quantitative or business field</li>"
+   }
+  ],
+  "salaryRange": {
+   "min": 38000,
+   "max": 38000,
+   "currency": "EUR",
+   "interval": "per-year-salary"
+  },
+  "text": "Junior Product Manager",
+  "country": "IT",
+  "workplaceType": "hybrid",
+  "opening": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "openingPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "descriptionBody": "<div>Vela Insurance is a fictional company used in Radar's test fixtures.</div>",
+  "descriptionBodyPlain": "Vela Insurance is a fictional company used in Radar's test fixtures.\n",
+  "hostedUrl": "https://jobs.eu.lever.co/velainsurance/c596f285-996a-448f-9ca0-326f20f1ed3b",
+  "applyUrl": "https://jobs.eu.lever.co/velainsurance/c596f285-996a-448f-9ca0-326f20f1ed3b/apply"
+ },
+ {
+  "additionalPlain": "Benefit: buoni pasto e lavoro ibrido.\n",
+  "additional": "<div>Benefit: buoni pasto e lavoro ibrido.</div>",
+  "categories": {
+   "commitment": "FTC",
+   "department": "Claims",
+   "location": "Milan",
+   "team": "Claims Italy",
+   "allLocations": [
+    "Milan"
+   ]
+  },
+  "createdAt": 1734695677693,
+  "descriptionPlain": "Vela Insurance è un'azienda immaginaria usata nei test di Radar.\n",
+  "description": "<div>Vela Insurance è un'azienda immaginaria usata nei test di Radar.</div>",
+  "id": "3e127331-c866-47f8-9bca-4eadf2e605a0",
+  "lists": [
+   {
+    "text": "Cosa Farai",
+    "content": "<li>Supporterai il team nei progetti quotidiani</li><li>Preparerai brevi analisi e report</li>"
+   },
+   {
+    "text": "Cosa Cerchiamo",
+    "content": "<li>Laurea in discipline economiche o quantitative</li><li>Buona conoscenza dell'inglese</li>"
+   }
+  ],
+  "salaryRange": {
+   "min": 23900,
+   "max": 23900,
+   "currency": "EUR",
+   "interval": "per-year-salary"
+  },
+  "text": "Academy - Gestione Sinistri - Network Partners",
+  "country": "IT",
+  "workplaceType": "hybrid",
+  "opening": "<div>Vela Insurance è un'azienda immaginaria usata nei test di Radar.</div>",
+  "openingPlain": "Vela Insurance è un'azienda immaginaria usata nei test di Radar.\n",
+  "descriptionBody": "<div>Vela Insurance è un'azienda immaginaria usata nei test di Radar.</div>",
+  "descriptionBodyPlain": "Vela Insurance è un'azienda immaginaria usata nei test di Radar.\n",
+  "hostedUrl": "https://jobs.eu.lever.co/velainsurance/3e127331-c866-47f8-9bca-4eadf2e605a0",
+  "applyUrl": "https://jobs.eu.lever.co/velainsurance/3e127331-c866-47f8-9bca-4eadf2e605a0/apply"
+ }
+]

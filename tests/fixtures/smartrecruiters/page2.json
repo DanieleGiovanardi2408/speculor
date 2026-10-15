@@ -1,0 +1,335 @@
+{
+ "offset": 2,
+ "limit": 2,
+ "totalFound": 4,
+ "content": [
+  {
+   "id": "744000155205063",
+   "name": "Consulting Intern Zürich (all genders) - bewirb dich jetzt bis zum 15. Januar 2027",
+   "uuid": "90b07c85-dc53-4d07-a23c-271eb1c62e88",
+   "jobAdId": "e8b81979-c3e5-46a6-b4e9-9ad484084979",
+   "defaultJobAd": true,
+   "refNumber": "REF4577W",
+   "company": {
+    "identifier": "AlturaConsulting",
+    "name": "Altura Consulting"
+   },
+   "releasedDate": "2026-10-13T09:11:23.857Z",
+   "location": {
+    "city": "Zürich",
+    "region": "ZH",
+    "country": "ch",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "47.3768866",
+    "longitude": "8.541694",
+    "fullLocation": "Zürich, ZH, Switzerland"
+   },
+   "industry": {
+    "id": "management_consulting",
+    "label": "Management Consulting"
+   },
+   "department": {},
+   "function": {
+    "id": "consulting",
+    "label": "Consulting"
+   },
+   "typeOfEmployment": {
+    "id": "intern",
+    "label": "Intern"
+   },
+   "experienceLevel": {
+    "id": "internship",
+    "label": "Internship"
+   },
+   "customField": [
+    {
+     "fieldId": "5e4cf6b784a7453214b15f94",
+     "fieldLabel": "Stage picture",
+     "valueId": "00cf68be-2660-41d5-b394-476e339e2df7",
+     "valueLabel": "Career Starter-3131"
+    },
+    {
+     "fieldId": "5e4cf87c8dda492796197d44",
+     "fieldLabel": "Branding (Firstbird)",
+     "valueId": "a0d30433-429d-46d8-8ed7-097a796edba0",
+     "valueLabel": "Default Branding"
+    },
+    {
+     "fieldId": "5d9336bc46c05d6ef6110326",
+     "fieldLabel": "Brands",
+     "valueId": "default",
+     "valueLabel": "Altura Consulting"
+    },
+    {
+     "fieldId": "5e4cf65067f7bf29cd43468b",
+     "fieldLabel": "Migrated from taloom",
+     "valueId": "fd0eec98-4de1-4597-b155-9cbd390fb3fc",
+     "valueLabel": "Not Migrated"
+    },
+    {
+     "fieldId": "5ede27a8f2759978170e6b21",
+     "fieldLabel": "Select standard Be-Claim: Be...",
+     "valueId": "f0d86903-c002-49a4-9565-b4d37a3dcafe",
+     "valueLabel": "ahead of the game."
+    },
+    {
+     "fieldId": "64ae7196cdad697ca97f7c81",
+     "fieldLabel": "Benefits text",
+     "valueId": "047eb2d0-ee59-43d4-b413-53aa8242fe64",
+     "valueLabel": "DACH-Cons-Interns-GER"
+    },
+    {
+     "fieldId": "5e4b978a620ec92aa06415a6",
+     "fieldLabel": "Type",
+     "valueId": "3e60dc39-7c66-4fac-9d6b-f811cdeb97d3",
+     "valueLabel": "Job"
+    },
+    {
+     "fieldId": "5ede3391318d407ba2543b07",
+     "fieldLabel": "Job location",
+     "valueId": "cae127e1-75b7-47fd-af67-fc63e44428ea",
+     "valueLabel": "Zurich"
+    },
+    {
+     "fieldId": "5e4cf51d620ec92aa06415cf",
+     "fieldLabel": "Job category (access rights)",
+     "valueId": "dfa63d6e-4b99-4ee0-ac77-aad5f8cad105",
+     "valueLabel": "Consultants"
+    },
+    {
+     "fieldId": "60e5998f018449163fda7256",
+     "fieldLabel": "Platform",
+     "valueId": "4f7758b7-5e7d-4fa8-b853-fc1a5e2f3333",
+     "valueLabel": "Not specified (default)"
+    },
+    {
+     "fieldId": "5e4cf8418dda492796197d43",
+     "fieldLabel": "Reward (Firstbird)",
+     "valueId": "7631fe95-a172-401d-adb9-e4c4cdf46bfa",
+     "valueLabel": "No Reward"
+    },
+    {
+     "fieldId": "5ede3184318d407ba2543aa6",
+     "fieldLabel": "Audience",
+     "valueId": "b5abc648-5c2c-445b-8e7e-c08e987e164e",
+     "valueLabel": "Consulting - Internship"
+    },
+    {
+     "fieldId": "COUNTRY",
+     "fieldLabel": "Country/Region",
+     "valueId": "ch",
+     "valueLabel": "Switzerland"
+    },
+    {
+     "fieldId": "67111f2176da8c01098b166b",
+     "fieldLabel": "Enable Whatsapp Application",
+     "valueId": "147e32aa-1399-4aad-acdc-6e41931d2434",
+     "valueLabel": "Enable"
+    },
+    {
+     "fieldId": "5e4cf5849ff37623bf5e5868",
+     "fieldLabel": "Application form (Screening questions sets)",
+     "valueId": "992fe258-97bd-4302-882c-5fe524391d62",
+     "valueLabel": "DACH - Consultants (incl. references + channel) DE"
+    },
+    {
+     "fieldId": "5f1eb28b5c2d0e36c4cff1dd",
+     "fieldLabel": "Post Job to Employee Referrals",
+     "valueId": "70a4e96e-03f9-4be4-b52a-b7cd950bfc3f",
+     "valueLabel": "Yes"
+    },
+    {
+     "fieldId": "64e70b84d6a5a47c849748bb",
+     "fieldLabel": "Recruitment process text",
+     "valueId": "e9087120-1670-4f7a-a082-066a33d7b58b",
+     "valueLabel": "DACH-Cons-Interns-GER"
+    },
+    {
+     "fieldId": "5e4b97c684a7453214b15f73",
+     "fieldLabel": "HR country (access rights)",
+     "valueId": "2de7d435-62c1-4cc1-b3a8-4accc1ef440d",
+     "valueLabel": "AC Switzerland"
+    },
+    {
+     "fieldId": "66bcb124f418e04263be2b47",
+     "fieldLabel": "Generic-URL",
+     "valueId": "1d5d5481-99eb-4c9d-8295-75b2a58555af",
+     "valueLabel": "Internship-Switzerland"
+    },
+    {
+     "fieldId": "5e4cfa8d620ec92aa06415d1",
+     "fieldLabel": "Custom Apply Now-Link",
+     "valueId": "c39b82ef-4442-49ca-9fcb-a0278a31d712",
+     "valueLabel": "Apply Now-Link"
+    },
+    {
+     "fieldId": "5ed8e97bf2759978170e5c6d",
+     "fieldLabel": "Job / Event country",
+     "valueId": "9899d7cd-e59f-4084-bea1-9225685446d9",
+     "valueLabel": "Switzerland"
+    },
+    {
+     "fieldId": "5efdd6157a414849c9dc89cc",
+     "fieldLabel": "Hide Apply Now-Button",
+     "valueId": "14f962c2-4374-4fcb-a429-e20ec025cd7f",
+     "valueLabel": "No"
+    },
+    {
+     "fieldId": "63692ee4d82be41f8a33eb85",
+     "fieldLabel": "Expertise",
+     "valueId": "3f16787d-7459-48ac-a502-a58b8eecdc25",
+     "valueLabel": "Other"
+    },
+    {
+     "fieldId": "5e4b974b8dda492796197d1c",
+     "fieldLabel": "Internal position name",
+     "valueLabel": "CH_Intern_Jan27"
+    }
+   ],
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/AlturaConsulting/postings/744000155205063",
+   "creator": {
+    "name": "Sam Sample"
+   },
+   "language": {
+    "code": "de",
+    "label": "German",
+    "labelNative": "Deutsch"
+   }
+  },
+  {
+   "id": "744000155707851",
+   "name": "Training Specialist (all genders)",
+   "uuid": "08871052-d9b0-4858-a87b-584b25d9aaeb",
+   "jobAdId": "835d83e6-9a2d-4f05-bbd4-8b18cb062bf4",
+   "defaultJobAd": true,
+   "refNumber": "REF3583D",
+   "company": {
+    "identifier": "AlturaConsulting",
+    "name": "Altura Consulting"
+   },
+   "releasedDate": "2026-10-15T09:21:15.899Z",
+   "location": {
+    "city": "Kyiv",
+    "region": "Kyiv city",
+    "country": "ua",
+    "postalCode": "02000",
+    "remote": false,
+    "hybrid": true,
+    "latitude": "50.4503596",
+    "longitude": "30.5245025",
+    "fullLocation": "Kyiv, Kyiv city, Ukraine"
+   },
+   "industry": {
+    "id": "management_consulting",
+    "label": "Management Consulting"
+   },
+   "department": {
+    "id": "1516390",
+    "label": "Human Resources"
+   },
+   "function": {
+    "id": "human_resources",
+    "label": "Human Resources"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "customField": [
+    {
+     "fieldId": "5d9336bc46c05d6ef6110327",
+     "fieldLabel": "Department",
+     "valueId": "1516390",
+     "valueLabel": "Human Resources"
+    },
+    {
+     "fieldId": "5d9336bc46c05d6ef6110326",
+     "fieldLabel": "Brands",
+     "valueId": "default",
+     "valueLabel": "Altura Consulting"
+    },
+    {
+     "fieldId": "5e4b978a620ec92aa06415a6",
+     "fieldLabel": "Type",
+     "valueId": "3e60dc39-7c66-4fac-9d6b-f811cdeb97d3",
+     "valueLabel": "Job"
+    },
+    {
+     "fieldId": "5ede3391318d407ba2543b07",
+     "fieldLabel": "Job location",
+     "valueId": "73aa8cc3-7f8f-4b87-a94b-8b9a15dfe876",
+     "valueLabel": "Kyiv"
+    },
+    {
+     "fieldId": "5e4cf51d620ec92aa06415cf",
+     "fieldLabel": "Job category (access rights)",
+     "valueId": "ca9e66c9-6e69-4447-acfe-12fde2ced01e",
+     "valueLabel": "Services"
+    },
+    {
+     "fieldId": "60e5998f018449163fda7256",
+     "fieldLabel": "Platform",
+     "valueId": "4f7758b7-5e7d-4fa8-b853-fc1a5e2f3333",
+     "valueLabel": "Not specified (default)"
+    },
+    {
+     "fieldId": "5ede3184318d407ba2543aa6",
+     "fieldLabel": "Audience",
+     "valueId": "56707877-e88a-46db-b3ba-f539ea32e9af",
+     "valueLabel": "Corporate Functions - Graduate hire"
+    },
+    {
+     "fieldId": "COUNTRY",
+     "fieldLabel": "Country/Region",
+     "valueId": "ua",
+     "valueLabel": "Ukraine"
+    },
+    {
+     "fieldId": "5e4cf5849ff37623bf5e5868",
+     "fieldLabel": "Application form (Screening questions sets)",
+     "valueId": "b57f5d9a-1128-4557-996a-944a95944921",
+     "valueLabel": "Services (incl. salary expectation) EN"
+    },
+    {
+     "fieldId": "5e4b97c684a7453214b15f73",
+     "fieldLabel": "HR country (access rights)",
+     "valueId": "a8ba88f6-ba80-4c24-a12a-f5db37c7f99c",
+     "valueLabel": "AC Ukraine"
+    },
+    {
+     "fieldId": "5ed8e97bf2759978170e5c6d",
+     "fieldLabel": "Job / Event country",
+     "valueId": "e8630fe8-2ba7-4712-94f4-9f7679c5a5fd",
+     "valueLabel": "Ukraine"
+    },
+    {
+     "fieldId": "63692ee4d82be41f8a33eb85",
+     "fieldLabel": "Expertise",
+     "valueId": "f92f94e3-2074-430b-b618-da525bd6e818",
+     "valueLabel": "HR (Corporate Functions)"
+    },
+    {
+     "fieldId": "5e4b974b8dda492796197d1c",
+     "fieldLabel": "Internal position name",
+     "valueLabel": "Training Assistant"
+    }
+   ],
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/AlturaConsulting/postings/744000155707851",
+   "creator": {
+    "name": "Alex Example"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  }
+ ]
+}

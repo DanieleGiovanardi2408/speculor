@@ -1,0 +1,204 @@
+{
+ "id": "744000155242046",
+ "name": "Intern Recruiting (all genders)",
+ "uuid": "832e49f5-0783-4693-8a7d-cb5ab88aeb0a",
+ "jobId": "e7130c8c-6e67-4d64-9177-aab7ddd16529",
+ "jobAdId": "fb0cd5f6-2b94-448f-9f6b-d4fc065ef1f6",
+ "defaultJobAd": true,
+ "refNumber": "REF4284V",
+ "company": {
+  "name": "Altura Consulting",
+  "identifier": "AlturaConsulting"
+ },
+ "location": {
+  "city": "Munich",
+  "region": "BY",
+  "country": "de",
+  "remote": false,
+  "hybrid": false,
+  "latitude": "48.1351253",
+  "longitude": "11.5819806",
+  "fullLocation": "Munich, BY, Germany"
+ },
+ "customField": [
+  {
+   "fieldId": "5d9336bc46c05d6ef6110327",
+   "fieldLabel": "Department",
+   "valueId": "1516390",
+   "valueLabel": "Human Resources"
+  },
+  {
+   "fieldId": "5e4cf6b784a7453214b15f94",
+   "fieldLabel": "Stage picture",
+   "valueId": "370d9274-7e52-449f-bedc-5ef7bf460242",
+   "valueLabel": "Non-Consulting3-1150"
+  },
+  {
+   "fieldId": "5d9336bc46c05d6ef6110326",
+   "fieldLabel": "Brands",
+   "valueId": "default",
+   "valueLabel": "Altura Consulting"
+  },
+  {
+   "fieldId": "5ede27a8f2759978170e6b21",
+   "fieldLabel": "Select standard Be-Claim: Be...",
+   "valueId": "f0d86903-c002-49a4-9565-b4d37a3dcafe",
+   "valueLabel": "ahead of the game."
+  },
+  {
+   "fieldId": "64ae7196cdad697ca97f7c81",
+   "fieldLabel": "Benefits text",
+   "valueId": "577a780b-ec40-4622-8ca7-7b896a74ff7f",
+   "valueLabel": "DACH-NonCons-Interns-GER"
+  },
+  {
+   "fieldId": "5f36cb178669527e4bd0642f",
+   "fieldLabel": "Post job to Stepstone (PWG)",
+   "valueId": "8a41d763-0ac4-48d5-bc49-7941b1eead9c",
+   "valueLabel": "Yes"
+  },
+  {
+   "fieldId": "5e4b978a620ec92aa06415a6",
+   "fieldLabel": "Type",
+   "valueId": "3e60dc39-7c66-4fac-9d6b-f811cdeb97d3",
+   "valueLabel": "Job"
+  },
+  {
+   "fieldId": "5ede3391318d407ba2543b07",
+   "fieldLabel": "Job location",
+   "valueId": "66dd0ca9-4ff9-48eb-8480-efbc6b08748f",
+   "valueLabel": "Munich"
+  },
+  {
+   "fieldId": "5e4cf70d84a7453214b15f95",
+   "fieldLabel": "Video ID",
+   "valueLabel": "1184845667"
+  },
+  {
+   "fieldId": "5e4cf51d620ec92aa06415cf",
+   "fieldLabel": "Job category (access rights)",
+   "valueId": "ca9e66c9-6e69-4447-acfe-12fde2ced01e",
+   "valueLabel": "Services"
+  },
+  {
+   "fieldId": "5e4b974b8dda492796197d1c",
+   "fieldLabel": "Internal position name",
+   "valueLabel": "de-S-Praktikant Recruiting-07-2026-München"
+  },
+  {
+   "fieldId": "60e5998f018449163fda7256",
+   "fieldLabel": "Platform",
+   "valueId": "27d49751-7ff4-4eb4-b2e4-fe381976997b",
+   "valueLabel": "Group Function HR / 9710"
+  },
+  {
+   "fieldId": "5ede3184318d407ba2543aa6",
+   "fieldLabel": "Audience",
+   "valueId": "a9bf411c-5835-4f99-855c-c3b90824551c",
+   "valueLabel": "Corporate Functions - Internship"
+  },
+  {
+   "fieldId": "COUNTRY",
+   "fieldLabel": "Country/Region",
+   "valueId": "de",
+   "valueLabel": "Germany"
+  },
+  {
+   "fieldId": "67111f2176da8c01098b166b",
+   "fieldLabel": "Enable Whatsapp Application",
+   "valueId": "147e32aa-1399-4aad-acdc-6e41931d2434",
+   "valueLabel": "Enable"
+  },
+  {
+   "fieldId": "5e4cf5849ff37623bf5e5868",
+   "fieldLabel": "Application form (Screening questions sets)",
+   "valueId": "6f74be3b-c909-4096-adee-22369a9bd3ca",
+   "valueLabel": "DACH - Services (Interns/Temp help) DE"
+  },
+  {
+   "fieldId": "5e4b97c684a7453214b15f73",
+   "fieldLabel": "HR country (access rights)",
+   "valueId": "222e1801-e4de-4b4b-8e0e-658f407954d2",
+   "valueLabel": "AC Germany"
+  },
+  {
+   "fieldId": "5e4cfa8d620ec92aa06415d1",
+   "fieldLabel": "Custom Apply Now-Link",
+   "valueId": "c39b82ef-4442-49ca-9fcb-a0278a31d712",
+   "valueLabel": "Apply Now-Link"
+  },
+  {
+   "fieldId": "5ed8e97bf2759978170e5c6d",
+   "fieldLabel": "Job / Event country",
+   "valueId": "73438633-f86a-44cb-ae3c-76999256eb3b",
+   "valueLabel": "Germany"
+  },
+  {
+   "fieldId": "63692ee4d82be41f8a33eb85",
+   "fieldLabel": "Expertise",
+   "valueId": "f92f94e3-2074-430b-b618-da525bd6e818",
+   "valueLabel": "HR (Corporate Functions)"
+  }
+ ],
+ "releasedDate": "2026-10-13T12:14:34.408Z",
+ "creator": {
+  "name": "Robin Placeholder",
+  "avatarUrl": "https://example.com/avatar.png"
+ },
+ "postingUrl": "https://jobs.smartrecruiters.com/AlturaConsulting/744000155242046-intern-recruiting-all-genders-",
+ "applyUrl": "https://jobs.smartrecruiters.com/AlturaConsulting/744000155242046-intern-recruiting-all-genders-?oga=true",
+ "referralUrl": "https://jobs.smartrecruiters.com/external-referrals/company/AlturaConsulting/publication/832e49f5-0783-4693-8a7d-cb5ab88aeb0a?dcr_ci=AlturaConsulting",
+ "jobAd": {
+  "sections": {
+   "companyDescription": {
+    "title": "Unternehmensbeschreibung",
+    "text": "<p>Altura Consulting ist ein fiktives Unternehmen für die Tests von Radar.</p>"
+   },
+   "jobDescription": {
+    "title": "Stellenbeschreibung",
+    "text": "<ul><li>Du unterstützt das Team in laufenden Projekten</li><li>Du erstellst kurze Analysen</li></ul>"
+   },
+   "qualifications": {
+    "title": "Qualifikationen",
+    "text": "<ul><li>Studium der Wirtschafts- oder Naturwissenschaften</li><li>Sehr gute Deutschkenntnisse</li></ul>"
+   },
+   "additionalInformation": {
+    "title": "Zusätzliche Informationen",
+    "text": "<p>Wir freuen uns auf deine Bewerbung.</p>"
+   },
+   "videos": {
+    "title": "Videos To Watch",
+    "urls": [
+     "https://video.example/1"
+    ]
+   }
+  }
+ },
+ "active": true,
+ "visibility": "PUBLIC",
+ "industry": {
+  "id": "management_consulting",
+  "label": "Management Consulting"
+ },
+ "function": {
+  "id": "human_resources",
+  "label": "Human Resources"
+ },
+ "department": {
+  "id": 1516390,
+  "label": "Human Resources"
+ },
+ "experienceLevel": {
+  "id": "internship",
+  "label": "Internship"
+ },
+ "typeOfEmployment": {
+  "id": "intern",
+  "label": "Intern"
+ },
+ "language": {
+  "code": "de",
+  "label": "German",
+  "labelNative": "Deutsch"
+ }
+}
