@@ -31,6 +31,7 @@ import {
   contactsSeed,
   draftsSeed,
   isoDate,
+  mockVerification,
   packsSeed,
   postingsSeed,
   reportsSeed,
@@ -330,6 +331,8 @@ export async function handleMock(
           apply_link: p.url,
           language: "it",
           style_issues: [],
+          verification: null,
+          verification_stale: false,
           provider: "mock",
           model: "mock-model",
           updated_at: now(),
@@ -343,7 +346,16 @@ export async function handleMock(
     case "PATCH /packs/:id": {
       const pk = db.packs.find((x) => x.id === id);
       if (!pk) return notFound();
-      Object.assign(pk, b as PackPatch, { updated_at: now() });
+      const pp = b as PackPatch;
+      const textsChanged = pp.cover_letter !== undefined || pp.form_answers !== undefined;
+      Object.assign(pk, pp, { updated_at: now() }, textsChanged && pk.verification ? { verification_stale: true } : {});
+      return ok(fullPack(pk));
+    }
+    case "POST /packs/:id/verify": {
+      const pk = db.packs.find((x) => x.id === id);
+      if (!pk) return notFound();
+      pk.verification = mockVerification(pk.cover_letter);
+      pk.verification_stale = false;
       return ok(fullPack(pk));
     }
 
@@ -425,6 +437,8 @@ export async function handleMock(
         text: db_.text,
         status: "draft",
         style_issues: [],
+        verification: null,
+        verification_stale: false,
         send_result: null,
         created_at: now(),
         updated_at: now(),
@@ -453,6 +467,8 @@ export async function handleMock(
         text: `Ciao ${c.name.split(" ")[0]}, mi sto candidando per "${p?.title ?? "la posizione"}" in ${p?.company_name ?? "azienda"}. Mi farebbe piacere collegarci. (Bozza demo.)`,
         status: "draft",
         style_issues: [],
+        verification: null,
+        verification_stale: false,
         send_result: null,
         created_at: now(),
         updated_at: now(),

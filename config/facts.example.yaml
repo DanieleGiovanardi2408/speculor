@@ -1,0 +1,123 @@
+# Fictional example fact bank (the demo persona "Alex Example"). Copy to config/facts.yaml
+# (gitignored) and write your own. Used by tests, `make dev` and CI.
+#
+# This file is the ONLY source of facts for every draft (cover letters, form answers, LinkedIn
+# notes, messages, follow-ups). A draft may state only what is written here; anything else must
+# become a visible [CHECK: ...] marker. Check how Radar reads it with `radar facts check`.
+#
+# Schema (free-form mappings and lists, flattened by radar/facts.py into "[id] text" lines):
+# - every list item that is a mapping should have an `id` (used in the fact ids, e.g.
+#   experience.example_analytics.did.0); other items are numbered from 0
+# - `use_in_drafts: false` on an item skips it with everything below it (never mentioned)
+# - a value `not_stated` means "the CV does not say it": never claim it
+# - `do_not_claim:` lists explicit prohibitions
+# - keys starting with `source` are provenance notes, not facts
+# - quote list items that contain ": " (otherwise YAML reads them as mappings)
+
+meta:
+  version: 2026-10-01
+  sources: [cv_example_2026_09]
+  decisions:
+    # Must equal AVAILABILITY_SENTENCE in backend/radar/llm/style.py (first line of every cover letter).
+    availability: "Available full-time from February 2027, start flexible until April 2027."
+    availability_it: "Disponibile full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027."
+  open_questions: []
+
+identity:
+  name: Alex Example
+  headline: Data Scientist. MSc Data Science, Example University
+  based_in: Bologna (IT)
+  citizenship: EU citizen
+  mobility: open to relocation across Europe
+  availability: "Full-time from February 2027 (start flexible until April 2027), for an internship or a direct hire"
+  languages:
+    italian: native
+    english: C1
+    other: none
+  links:
+    github: github.com/example
+    linkedin: linkedin.com/in/example
+
+profile_statement: >
+  MSc student in Data Science at Example University. Works on evaluation of language models
+  and on forecasting; wants an international team that ships data tools people use.
+
+experience:
+  - id: example_analytics
+    org: Example Analytics
+    org_description: Fictional analytics consultancy for retailers.
+    role: Data Intern
+    dates: Jun 2026 - Aug 2026
+    location: Bologna
+    did:
+      - Built a forecasting pipeline in Python for weekly demand.
+      - "Presented the forecast results to a non-technical audience: the planning team."
+    stack: [Python, SQL, pandas]
+    do_not_claim:
+      - leading the team
+      - any accuracy metric of the forecasts (not stated)
+
+  - id: teaching
+    org: Example University
+    role: Teaching assistant, introductory statistics
+    dates: Sep 2025 - Jan 2026
+    did:
+      - Explained regression and A/B testing to students in weekly tutorials.
+    class_size: not_stated
+
+  - id: family_shop
+    org: Family workshop (fictional)
+    role: Summer helper
+    dates: Summer 2024
+    did:
+      - Helped digitise inspection logs.
+    use_in_drafts: false   # the user decided not to cite it
+
+education:
+  - id: example_msc
+    school: Example University
+    degree: MSc in Data Science
+    dates: Sep 2025 - Jul 2027 (expected)
+    thesis: Evaluation methods for small language models on Italian text.
+    courses: [Machine Learning, Statistics, NLP]
+    grades: not_stated   # never state a GPA or average
+
+projects:
+  - id: tinybench
+    name: tinybench
+    context: personal project, Python
+    what: Small benchmark of LLM agents on spreadsheet tasks.
+    results: not_stated
+
+  - id: eval_harness
+    name: Thesis evaluation harness
+    context: MSc thesis, Python
+    what: Evaluation harness that runs 40 benchmark tasks across six open models and reports confidence intervals instead of single scores.
+    solution: Versioned datasets, tests and documented design choices, so the lab could reuse it.
+
+  - id: late_deliveries
+    name: Late deliveries forecast
+    context: group project with a logistics partner
+    what: Trained a gradient boosting model to forecast late deliveries and presented the results to a non-technical audience.
+
+  - id: retention
+    name: E-commerce cohort retention
+    context: MSc course project
+    what: Analysed two years of e-commerce orders, cleaned the data in SQL, built a cohort retention model in Python and a short dashboard for the course partner.
+
+  - id: defect_detection
+    name: Surface defect detection
+    context: MSc course project
+    what: Trained a defect detection model on a public dataset of metal surfaces and packaged it with a small FastAPI service.
+    learning: Fixing label noise helped more than a bigger model.
+    results: not_stated
+
+skills:
+  programming: [Python, SQL, TypeScript]
+  ml: [forecasting, classification, evaluation design, gradient boosting]
+  llm: [RAG, embeddings, tool-calling agents]
+  tools: [PyTorch, FastAPI, Docker, pandas]
+
+drafting_rules:
+  - Cite only facts above. Unsupported claims become [CHECK: ...].
+  - English level is C1: write "fluent English" or "C1", never "native".

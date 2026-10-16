@@ -14,7 +14,7 @@ Requires Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 20 + pnpm.
 
 ```bash
 make install                                                        # uv, pnpm, pre-commit
-for f in config/*.example.yaml; do cp "$f" "${f/.example/}"; done   # profile, companies, rules
+for f in config/*.example.yaml; do cp "$f" "${f/.example/}"; done   # profile, companies, rules, facts
 cp .env.example .env                                                # set GROQ_API_KEY
 make seed            # optional: import private/radar_seed.json into data/radar.db
 make run-pipeline    # one run by hand

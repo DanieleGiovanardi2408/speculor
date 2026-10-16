@@ -291,6 +291,15 @@ export function usePatchPack(postingId: number) {
   });
 }
 
+/** Re-check the pack texts against the fact bank (texts are not changed). */
+export function useVerifyPack(postingId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (packId: number) => api.post<Pack>(`/api/packs/${packId}/verify`),
+    onSuccess: (pack) => qc.setQueryData(qk.pack(postingId), pack),
+  });
+}
+
 export function useCreateContact(postingId: number) {
   const qc = useQueryClient();
   return useMutation({

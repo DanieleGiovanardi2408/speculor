@@ -48,5 +48,5 @@ const RULE_LABEL: Record<string, string> = {
 };
 export const ruleLabel = (id: string) => RULE_LABEL[id] ?? id.replace(/[_-]+/g, " ").replace(/^./, (c) => c.toUpperCase());
 
-const PURPOSE_LABEL: Record<string, string> = { scoring: "valutazione", pack: "pacchetti", packs: "pacchetti", draft: "bozze", drafts: "bozze" };
+const PURPOSE_LABEL: Record<string, string> = { scoring: "valutazione", pack: "pacchetti", packs: "pacchetti", draft: "bozze", drafts: "bozze", verify: "verifica fatti" };
 export const purposeLabel = (p: string) => PURPOSE_LABEL[p] ?? p;

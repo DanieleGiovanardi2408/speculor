@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Link, useBlocker, useParams } from "react-router-dom";
-import { useGeneratePack, usePack, usePatchPack, usePosting } from "../api/hooks";
+import { useGeneratePack, usePack, usePatchPack, usePosting, useVerifyPack } from "../api/hooks";
 import type { FormAnswer, Pack, PackPatch, PostingSummary } from "../api/types";
 import { FilterStateBadge, PriorityBadge, UserStatusBadge } from "../components/Badge";
 import { CharCounter } from "../components/CharCounter";
@@ -8,6 +8,7 @@ import { ContactsSection } from "../components/ContactsSection";
 import { CopyButton } from "../components/CopyButton";
 import { UnsavedIndicator } from "../components/DraftCard";
 import { ExternalLink } from "../components/ExternalLink";
+import { FactCheckPanel } from "../components/FactCheckPanel";
 import { Icon } from "../components/Icon";
 import { MarkSentDialog, useCvVersions } from "../components/MarkSentDialog";
 import { PageHeader, Section } from "../components/PageHeader";
@@ -47,6 +48,7 @@ function PackEditor({ pack }: { pack: Pack }) {
   const [sentOpen, setSentOpen] = useState(false);
   const cvs = useCvVersions([pack.cv_version, cv]);
   const patch = usePatchPack(pack.posting_id);
+  const verify = useVerifyPack(pack.posting_id);
   const toast = useToast();
 
   // Re-sync when the server version changes (e.g. after save).
@@ -139,6 +141,21 @@ function PackEditor({ pack }: { pack: Pack }) {
           </Notice>
         </div>
       )}
+
+      <FactCheckPanel
+        verification={pack.verification}
+        stale={pack.verification_stale || dirty}
+        pending={verify.isPending}
+        onVerify={() =>
+          verify.mutate(pack.id, {
+            onSuccess: (p) => {
+              const n = p.verification?.counts.unsupported ?? 0;
+              toast.success(n > 0 ? `Verifica completata: ${n} affermazioni non supportate.` : "Verifica completata: nessuna affermazione non supportata.");
+            },
+            onError: (e) => toast.error(`Verifica non riuscita. ${e.message}`),
+          })
+        }
+      />
 
       <Section title="Lettera di presentazione" actions={<CopyButton text={cover} srContext="lettera di presentazione" />}>
         <label htmlFor={ids.cover} className="sr-only">

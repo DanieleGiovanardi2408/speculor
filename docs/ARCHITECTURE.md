@@ -39,6 +39,8 @@ flowchart LR
 | Pipeline | `radar/pipeline/` | Normalization (company, location, country, zone), de-duplication (`dedupe_key`), closed detection, filters (incl. the `post_graduation` track), diff, manual add by URL |
 | LLM | `radar/llm/` | Provider interface (Groq, Anthropic, offline `fake`), deterministic title relevance (`relevance.py`), scoring, packs and drafts, style checks; token usage stored in `llm_usage` |
 | Contact search | `radar/llm/contacts.py` | Public profiles for Alta postings via Groq browser search (server-side tool; Radar itself fetches no page and never logs in). Results are grounded in the executed searches, slug-checked, stored as "da verificare"; estimated cost per call in `llm_usage.est_cost_eur`, monthly EUR cap and daily call cap enforced before each call |
+| Fact bank | `radar/facts.py` | Loads and flattens `config/facts.yaml` into `[id] text` facts and prohibitions (`use_in_drafts: false`, `not_stated`, `do_not_claim`, language levels); the only source of candidate facts for drafts |
+| LLM | `radar/llm/` | Provider interface (Groq, Anthropic, offline `fake`), deterministic title relevance (`relevance.py`), scoring (from `config/profile.yaml`), packs and drafts (from the fact bank only), fact check (`verify.py`: deterministic pre-check + verifier call), style checks; token usage stored in `llm_usage` |
 | API | `radar/api/` | JSON API used by the web app (contract in [API.md](API.md)); optional Supabase JWT auth with an allowed email (off by default, see [RUNNING.md](RUNNING.md#self-hosting-on-postgres-optional)) |
 | Web app | `frontend/` | Vite + React + TanStack Query, Italian UI, local only. *Oggi*, *Annunci* (*Stage* \| *Dopo la laurea* \| *Scartati*, keyboard shortcuts), *Pacchetto*, *Approvazioni*, *Candidature*, *Aziende*, *Impostazioni*, *Esecuzioni*. axe-clean (WCAG 2.1 AA) at 1280 and 390 px |
 | Sender | `radar/send.py` | `radar send`: interactive, local-only sending of approved LinkedIn drafts through linkedin-cli |
@@ -103,6 +105,13 @@ flowchart LR
    (no em dashes, no cliches, length limits, `[CHECK: ...]` markers) and reported as
    `style_issues`.
 8. **Report**: `runs` row with counts and LLM usage; a Markdown report in `data/reports/`, shown
+   `style_issues`. Drafts may state only facts from the fact bank (`config/facts.yaml`); a
+   second LLM call then maps every claim to a fact id (`supported` / `unsupported` / `check`),
+   and a deterministic pre-check flags numbers not in the facts and prohibited mentions
+   ("native" English, unlisted languages, GPA, excluded items). Results are stored as
+   `verification` on the pack and its drafts; texts are never rewritten. `radar packs verify`
+   and `radar packs regenerate` (before/after diffs under `data/packs_diff/`) re-run it.
+7. **Report**: `runs` row with counts and LLM usage; a Markdown report in `data/reports/`, shown
    in *Esecuzioni* (never printed to the log).
 
 ## Approval and sending

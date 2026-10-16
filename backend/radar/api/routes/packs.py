@@ -1,8 +1,11 @@
-"""Application packs: manual edits (cover letter, form answers, CV version, apply link)."""
+"""Application packs: manual edits (cover letter, form answers, CV version, apply link) and
+the fact check (re-verify the current texts against the fact bank)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
 
 from radar.api import schemas
 from radar.api.deps import SessionDep
@@ -29,6 +32,28 @@ def patch_pack(pack_id: int, body: schemas.PackPatch, session: SessionDep) -> sc
         pack.apply_link = body.apply_link
     pack.updated_at = utcnow()
     session.add(pack)
+    session.commit()
+    session.refresh(pack)
+    return pack_out(session, pack)
+
+
+@router.post("/{pack_id}/verify", response_model=schemas.PackOut)
+def verify_pack(
+    pack_id: int,
+    session: SessionDep,
+    llm: Annotated[bool, Query(description="Also run the LLM verifier")] = True,
+) -> schemas.PackOut:
+    """Re-check the current texts of the pack and its outreach drafts against the fact bank.
+    Texts are not changed. Without a key (or with ``llm=false``) only the pre-check runs."""
+    pack = get_or_404(session, ApplicationPack, pack_id, "Pack")
+    from radar.facts import FactsError
+    from radar.llm.verify import verify_pack as run_verify
+
+    try:
+        run_verify(session, pack, use_llm=llm)
+    except FactsError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Fact bank: {exc}") from exc
     session.commit()
     session.refresh(pack)
     return pack_out(session, pack)

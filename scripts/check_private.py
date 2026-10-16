@@ -34,6 +34,7 @@ FORBIDDEN_PATH_GLOBS = (
     "config/profile.yaml",
     "config/companies.yaml",
     "config/rules.yaml",
+    "config/facts.yaml",
     "radar_seed.json",
     "*/radar_seed.json",
     "*.pdf",

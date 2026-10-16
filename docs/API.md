@@ -58,13 +58,24 @@ interface ContactSearchResult { stored: number; found: number; dropped: Record<s
 interface Draft { id: number; posting_id: number | null; pack_id: number | null;
   contact_id: number | null; kind: DraftKind; channel: "linkedin" | "email" | "other";
   recipient: string | null; text: string; status: DraftStatus; style_issues: string[];
+  verification: Verification | null; verification_stale: boolean;
   send_result: string | null; created_at: string; updated_at: string; sent_at: string | null;
   posting_title: string | null; company_name: string | null; contact_name: string | null }
 interface FormAnswer { question: string; answer: string }
 interface Pack { id: number; posting_id: number; cover_letter: string; form_answers: FormAnswer[];
   cv_version: string; apply_link: string; language: string; style_issues: string[];
+  verification: Verification | null; verification_stale: boolean;  // stale: a text changed
   provider: string; model: string; updated_at: string;
   posting: PostingSummary; contacts: Contact[]; drafts: Draft[] }
+// Fact check against config/facts.yaml (radar/llm/verify.py). Texts are never rewritten.
+interface VerificationClaim { text_id: string;  // cover_letter | form_answers.<n> | draft kind
+  claim: string; fact_id: string | null; verdict: "supported" | "unsupported" | "check";
+  source: "llm" | "precheck" | "llm+precheck"; reason: string | null }
+interface Verification { version: number; status: "ok" | "precheck_only"; verified_at: string;
+  provider: string | null; model: string | null; error: string | null;  // disabled | rate_limit | ...
+  facts_source: string; facts_version: string | null; texts_hash: string;
+  counts: { supported: number; unsupported: number; check: number; total: number };
+  claims: VerificationClaim[]; drafter_claims: { claim: string; fact_ids: string[] }[] }
 
 interface Application { id: number; posting_id: number | null; company: string; role: string;
   city: string | null; date_sent: string; channel: string; cv_version: string; stage: Stage;
@@ -107,6 +118,7 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | POST | /api/postings/{id}/pack | generate now (LLM) | Pack |
 | PATCH | /api/packs/{id} | `{cover_letter?, form_answers?, cv_version?, apply_link?}` | Pack |
 | POST | /api/postings/{id}/contacts/find | public profile search (Groq browser search): up to 3 contacts, stored with `needs_review=true`. 429 when the monthly cost cap or the daily call cap is reached, 503 without `GROQ_API_KEY` | ContactSearchResult |
+| POST | /api/packs/{id}/verify | `?llm=false` for the deterministic pre-check only | Pack (re-checked) |
 | POST | /api/contacts | `{posting_id, name, role?, profile_url?, why?}` | Contact |
 | PATCH | /api/contacts/{id} | `{needs_review?}` (the user checked a found profile) | Contact |
 | DELETE | /api/contacts/{id} | | 204 |

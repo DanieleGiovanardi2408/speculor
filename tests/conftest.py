@@ -6,7 +6,19 @@ import pytest
 from sqlalchemy import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
+from radar import config as radar_config
 from radar import models  # noqa: F401
+
+EXAMPLE_FACTS = radar_config.REPO_ROOT / "config" / "facts.example.yaml"
+
+
+@pytest.fixture(autouse=True)
+def _example_facts(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Tests never read the real (gitignored) fact bank: always the fictional example."""
+    monkeypatch.setenv("RADAR_FACTS_PATH", str(EXAMPLE_FACTS))
+    radar_config.get_settings.cache_clear()
+    yield
+    radar_config.get_settings.cache_clear()
 
 
 @pytest.fixture

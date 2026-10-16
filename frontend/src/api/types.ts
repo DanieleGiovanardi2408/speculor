@@ -129,6 +129,34 @@ export interface ContactSearchResult {
   budget: ContactBudget;
 }
 
+export type Verdict = "supported" | "unsupported" | "check";
+
+/** One claim of a generated text checked against the fact bank (radar.llm.verify). */
+export interface VerificationClaim {
+  /** cover_letter | form_answers.<n> (1-based) | draft kind */
+  text_id: string;
+  claim: string;
+  fact_id: string | null;
+  verdict: Verdict | string;
+  source: string;
+  reason: string | null;
+}
+
+export interface Verification {
+  version: number;
+  status: "ok" | "precheck_only" | string;
+  verified_at: string;
+  provider: string | null;
+  model: string | null;
+  error: string | null;
+  facts_source: string;
+  facts_version: string | null;
+  texts_hash: string;
+  counts: { supported: number; unsupported: number; check: number; total: number };
+  claims: VerificationClaim[];
+  drafter_claims: { claim: string; fact_ids: string[] }[];
+}
+
 export interface Draft {
   id: number;
   posting_id: number | null;
@@ -140,6 +168,8 @@ export interface Draft {
   text: string;
   status: DraftStatus;
   style_issues: string[];
+  verification: Verification | null;
+  verification_stale: boolean;
   send_result: string | null;
   created_at: string;
   updated_at: string;
@@ -163,6 +193,9 @@ export interface Pack {
   apply_link: string;
   language: string;
   style_issues: string[];
+  verification: Verification | null;
+  /** A text changed after the last check. */
+  verification_stale: boolean;
   provider: string;
   model: string;
   updated_at: string;

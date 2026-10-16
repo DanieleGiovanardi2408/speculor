@@ -169,6 +169,8 @@ class ApplicationPack(SQLModel, table=True):
     apply_link: str = ""
     language: str = "en"
     style_issues: list[str] | None = _json_col()
+    # Fact check of the texts against the fact bank (shape in radar.llm.verify).
+    verification: dict[str, Any] | None = _json_col()
     provider: str = ""
     model: str = ""
     created_at: datetime = Field(default_factory=utcnow)
@@ -206,6 +208,7 @@ class Draft(SQLModel, table=True):
     text: str = Field(default="", sa_column=Column(Text))
     status: str = Field(default="draft", index=True)
     style_issues: list[str] | None = _json_col()
+    verification: dict[str, Any] | None = _json_col()  # see radar.llm.verify
     send_result: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -247,7 +250,7 @@ class LLMUsage(SQLModel, table=True):
     run_id: int | None = Field(default=None, foreign_key="runs.id", index=True)
     provider: str
     model: str
-    purpose: str  # scoring | pack | draft | contacts
+    purpose: str  # scoring | pack | draft | contacts | verify
     requests: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
