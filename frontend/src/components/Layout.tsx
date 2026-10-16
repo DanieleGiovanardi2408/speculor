@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useDrafts } from "../api/hooks";
 import { MOCK_MODE } from "../api/client";
 import { Icon, type IconName } from "./Icon";
+import { PostingActionsProvider } from "./PostingActions";
+import { GlobalShortcuts } from "./ShortcutsHelp";
 
 interface NavItem {
   to: string;
@@ -92,7 +94,7 @@ function MoreMenu() {
         aria-expanded={open}
         aria-controls="more-menu"
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${active ? "text-accent" : "text-ink-muted"}`}
+        className={`flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? "relative font-semibold text-accent-ink before:absolute before:inset-x-1/4 before:top-0 before:h-0.5 before:rounded-full before:bg-accent" : "text-ink-muted"}`}
       >
         <Icon name="more" size={20} />
         Altro
@@ -104,7 +106,7 @@ function MoreMenu() {
               <NavLink
                 to={n.to}
                 className={({ isActive }) =>
-                  `flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm ${isActive ? "bg-accent-soft font-medium text-accent-ink" : "text-ink hover:bg-subtle"}`
+                  `flex min-h-11 items-center gap-2 rounded-lg px-3 py-2.5 text-sm ${isActive ? "bg-accent-soft font-medium text-accent-ink" : "text-ink hover:bg-subtle"}`
                 }
               >
                 <Icon name={n.icon} />
@@ -180,6 +182,7 @@ export function Layout() {
           </ul>
         </nav>
         <div className="mt-auto space-y-3 px-2">
+          <GlobalShortcuts />
           <MockBanner />
           <p className="text-xs leading-relaxed text-ink-muted">
             Radar non invia mai candidature né messaggi: approvi tu, invii tu.
@@ -190,7 +193,9 @@ export function Layout() {
 
       <main id="main" tabIndex={-1} className="min-w-0 focus:outline-none">
         <div className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 md:pb-12 md:pt-10 lg:px-10">
-          <Outlet />
+          <PostingActionsProvider>
+            <Outlet />
+          </PostingActionsProvider>
         </div>
       </main>
       </div>
@@ -204,7 +209,7 @@ export function Layout() {
                 to={n.to}
                 end={n.end}
                 className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${isActive ? "text-accent" : "text-ink-muted"}`
+                  `flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${isActive ? "relative font-semibold text-accent-ink before:absolute before:inset-x-1/4 before:top-0 before:h-0.5 before:rounded-full before:bg-accent" : "text-ink-muted"}`
                 }
               >
                 <Icon name={n.icon} size={20} />

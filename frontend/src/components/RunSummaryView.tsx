@@ -1,6 +1,7 @@
 import type { RunSummary } from "../api/types";
 import { formatDateTime, formatNumber } from "../lib/format";
 import { sourceLabel } from "../lib/labels";
+import { plainLlmSkipped, plainRunErrorLine } from "../lib/plain";
 import { Badge, type Tone } from "./Badge";
 import type { IconName } from "./Icon";
 
@@ -79,9 +80,9 @@ export function parseRunStats(stats: Record<string, unknown> | null): ParsedStat
       }
     } else if (key === "errors" && Array.isArray(value)) {
       value.forEach((e) => {
-        if (!isObj(e)) return out.errors.push(String(e));
+        if (!isObj(e)) return out.errors.push(plainRunErrorLine(null, String(e)));
         const msg = String(e.error ?? e.message ?? JSON.stringify(e));
-        out.errors.push(e.source ? `${String(e.source)}: ${msg}` : msg);
+        out.errors.push(`${plainRunErrorLine(e.source ? String(e.source) : null, msg)} (${msg})`);
       });
     } else if (key === "llm" && isObj(value)) {
       // Backend shape: { scoring: {input_tokens, output_tokens, ...}, packs: {...}, skipped?: string }
@@ -173,7 +174,7 @@ export function RunSummaryView({ run, compact = false }: { run: RunSummary; comp
         </div>
       )}
 
-      {s.llmSkipped && <p className="text-xs text-ink-muted">LLM saltato: {s.llmSkipped}</p>}
+      {s.llmSkipped && <p className="text-xs text-ink-muted">{plainLlmSkipped(s.llmSkipped)}</p>}
       {s.tokens.length > 0 && (
         <p className="text-xs text-ink-muted">
           Token LLM: {s.tokens.map((t) => `${formatNumber(t.value)} ${t.label}`).join(" · ")}

@@ -34,7 +34,9 @@ function buildQuery(query?: Query): string {
   return s ? `?${s}` : "";
 }
 
-function messageFrom(status: number, detail: unknown): string {
+export const OFFLINE_MESSAGE = "Non riesco a contattare il server. Controlla che `make dev-real` sia acceso e riprova.";
+
+function detailText(detail: unknown): string | null {
   if (detail && typeof detail === "object" && "detail" in detail) {
     const d = (detail as { detail: unknown }).detail;
     if (typeof d === "string") return d;
@@ -44,10 +46,33 @@ function messageFrom(status: number, detail: unknown): string {
         .join("; ");
     }
   }
-  if (status === 401 || status === 403) return "Accesso non autorizzato.";
-  if (status === 404) return "Elemento non trovato.";
-  if (status >= 500) return "Errore del server. Riprova tra poco.";
-  return `Richiesta non riuscita (${status}).`;
+  return typeof detail === "string" && detail.length < 300 ? detail : null;
+}
+
+/** Plain-Italian message for an HTTP error; the raw detail (often English) stays as context. */
+export function messageFrom(status: number, detail: unknown): string {
+  const raw = detailText(detail);
+  const extra = raw ? ` (dettaglio: ${raw})` : "";
+  switch (true) {
+    case status === 401:
+      return "La sessione è scaduta o manca l'accesso. Accedi di nuovo e riprova.";
+    case status === 403:
+      return "Questo account non è autorizzato a usare Radar.";
+    case status === 404:
+      return `Non trovo questo elemento: forse è stato rimosso. Ricarica la pagina${extra}.`;
+    case status === 409:
+      return `Non si può modificare in questo stato${extra}.`;
+    case status === 422:
+      return raw ? `Controlla i dati inseriti: ${raw}` : "Controlla i dati inseriti e riprova.";
+    case status === 501:
+      return `Questa funzione non è disponibile in questa installazione${extra}.`;
+    case status === 502 || status === 504:
+      return `Il servizio esterno (modello linguistico o sito dell'annuncio) non ha risposto. Riprova tra qualche minuto${extra}.`;
+    case status >= 500:
+      return `Il server ha avuto un problema (errore ${status}). Riprova tra poco; se continua, guarda il terminale dove gira il server.`;
+    default:
+      return `La richiesta non è andata a buon fine (errore ${status})${extra}.`;
+  }
 }
 
 /** Fetch wrapper for the Radar API. Paths start with `/api/...`. */
@@ -76,7 +101,7 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
-    throw new ApiError(0, "Impossibile contattare il server. Il backend è avviato?");
+    throw new ApiError(0, OFFLINE_MESSAGE);
   }
 
   if (response.status === 204) return undefined as T;

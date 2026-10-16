@@ -1,14 +1,17 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAddPosting, usePostings, useSettings } from "../api/hooks";
-import type { PostingSort, PostingsQuery } from "../api/types";
+import type { PostingSort, PostingSummary, PostingsQuery } from "../api/types";
 import { Dialog } from "../components/Dialog";
 import { Icon } from "../components/Icon";
 import { PageHeader } from "../components/PageHeader";
+import { usePostingActions } from "../components/PostingActions";
 import { PostingRow } from "../components/PostingRow";
 import { EmptyState, ErrorState, ListSkeleton } from "../components/States";
 import { useToast } from "../components/Toast";
 import { sourceLabel } from "../lib/labels";
+import { ruleLabel } from "../lib/plain";
+import { useShortcuts } from "../lib/shortcuts";
 
 const STATE_OPTIONS: { value: string; label: string; query: Partial<PostingsQuery> }[] = [
   { value: "todo", label: "Da valutare", query: { user_status: "todo" } },
@@ -25,10 +28,31 @@ const SORT_OPTIONS: { value: PostingSort; label: string }[] = [
   { value: "first_seen", label: "Più recenti" },
 ];
 
+export type View = "stage" | "laurea" | "scartati";
+
+export function viewOf(sp: URLSearchParams): View {
+  const v = sp.get("vista");
+  if (v === "laurea" || v === "scartati") return v;
+  return sp.get("scartati") === "1" ? "scartati" : "stage";
+}
+
+const VIEW_INFO: Record<View, { label: string; line: string }> = {
+  stage: { label: "Stage", line: "Stage e tirocini, filtrati e valutati ogni giorno. Decidi tu cosa candidare." },
+  laurea: {
+    label: "Dopo la laurea",
+    line: "Graduate program e primi ruoli junior che partono a laurea conseguita: da tenere d'occhio per dopo, senza fretta.",
+  },
+  scartati: {
+    label: "Scartati",
+    line: "Annunci esclusi dai filtri automatici. Vedi quale regola li ha scartati e ripristinali con un clic se è un errore.",
+  },
+};
+
 /** URL search params <-> API query. Italian param names keep shared links readable. */
 function toQuery(sp: URLSearchParams): PostingsQuery {
   const state = STATE_OPTIONS.find((s) => s.value === sp.get("stato"));
   const sort = sp.get("ordina") as PostingSort | null;
+  const view = viewOf(sp);
   return {
     priority: sp.get("priorita") ?? undefined,
     zone: sp.get("zona") ?? undefined,
@@ -36,9 +60,18 @@ function toQuery(sp: URLSearchParams): PostingsQuery {
     source: sp.get("fonte") ?? undefined,
     q: sp.get("q") ?? undefined,
     sort: sort && SORT_OPTIONS.some((o) => o.value === sort) ? sort : "priority",
-    include_rejected: sp.get("scartati") === "1" ? true : undefined,
+    track: view === "laurea" ? "post_graduation" : view === "scartati" ? "all" : "internship",
+    only_rejected: view === "scartati" ? true : undefined,
     ...(state?.query ?? {}),
   };
+}
+
+/** Fallback when the server does not know `track` yet: guess from the posting type. */
+const looksPostGraduation = (p: PostingSummary) => /graduate|full.?time|lavoro|junior|entry|permanent/i.test(p.type ?? "");
+
+export function applyTrackFallback(items: PostingSummary[], view: View): PostingSummary[] {
+  if (view === "scartati" || items.length === 0 || items.some((p) => "track" in p)) return items;
+  return items.filter((p) => (view === "laurea" ? looksPostGraduation(p) : !looksPostGraduation(p)));
 }
 
 function AddFromUrl() {
@@ -60,7 +93,7 @@ function AddFromUrl() {
     }
     add.mutate(url.trim(), {
       onSuccess: (p) => {
-        toast.success(`Annuncio aggiunto: ${p.title}`);
+        toast.success(`Annuncio aggiunto: ${p.title}.`);
         setOpen(false);
         setUrl("");
       },
@@ -153,23 +186,86 @@ function FilterSelect({
   );
 }
 
+function RuleChips({ items, value, onChange }: { items: PostingSummary[]; value: string | null; onChange: (v: string | null) => void }) {
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((p) => new Set(p.filter_hits.filter((h) => h.action === "reject").map((h) => h.rule_id)).forEach((r) => m.set(r, (m.get(r) ?? 0) + 1)));
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [items]);
+  if (counts.length === 0) return null;
+  const chip = (active: boolean) =>
+    `inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm font-medium sm:min-h-9 ${active ? "border-accent bg-accent-soft text-accent-ink" : "border-line-strong bg-surface text-ink hover:bg-subtle"}`;
+  return (
+    <div role="group" aria-label="Filtra per regola che ha scartato l'annuncio" className="mb-4 flex flex-wrap gap-2">
+      <button type="button" aria-pressed={!value} className={chip(!value)} onClick={() => onChange(null)}>
+        {!value && <Icon name="check" size={14} />}
+        Tutte le regole <span className="tabular-nums text-ink-muted">{items.length}</span>
+      </button>
+      {counts.map(([rule, n]) => (
+        <button key={rule} type="button" aria-pressed={value === rule} className={chip(value === rule)} onClick={() => onChange(value === rule ? null : rule)}>
+          {value === rule && <Icon name="check" size={14} />}
+          {ruleLabel(rule)} <span className="tabular-nums text-ink-muted">{n}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  const views: View[] = ["stage", "laurea", "scartati"];
+  return (
+    <nav aria-label="Vista annunci" className="mb-2">
+      <ul className="inline-flex w-full rounded-xl border border-line bg-subtle p-1 sm:w-auto">
+        {views.map((v) => (
+          <li key={v} className="flex-1 sm:flex-none">
+            <button
+              type="button"
+              aria-current={view === v ? "page" : undefined}
+              onClick={() => onChange(v)}
+              className={`min-h-11 w-full whitespace-nowrap rounded-lg px-3 text-sm font-medium sm:min-h-9 sm:px-4 ${
+                view === v ? "bg-surface font-semibold text-ink shadow-sm ring-1 ring-line" : "text-ink-muted hover:text-ink"
+              }`}
+            >
+              {VIEW_INFO[v].label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 export function PostingsPage() {
   const [sp, setSp] = useSearchParams();
+  const view = viewOf(sp);
   const query = useMemo(() => toQuery(sp), [sp]);
-  const { data, isPending, isError, error, refetch, isFetching } = usePostings(query);
+  const { data: raw, isPending, isError, error, refetch, isFetching } = usePostings(query);
   // Unfiltered list to derive type/source options.
-  const all = usePostings({ include_rejected: true });
+  const all = usePostings({ include_rejected: true, track: "all" });
   const settings = useSettings();
+  const actions = usePostingActions();
+  const navigate = useNavigate();
   const openId = Number(sp.get("open"));
+  const rule = view === "scartati" ? sp.get("regola") : null;
   const searchId = useId();
   const sortId = useId();
-  const rejectedId = useId();
   const filtersId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   // Render in pages: ~1000 expandable cards at once makes filtering sluggish.
   const PAGE = 100;
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [sp]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set(Number.isFinite(openId) && openId > 0 ? [openId] : []));
+  const [cursor, setCursor] = useState(-1);
+  const [announce, setAnnounce] = useState("");
+
+  const viewItems = useMemo(() => (raw ? applyTrackFallback(raw, view) : undefined), [raw, view]);
+  const data = useMemo(
+    () => (viewItems && rule ? viewItems.filter((p) => p.filter_hits.some((h) => h.action === "reject" && h.rule_id === rule)) : viewItems),
+    [viewItems, rule],
+  );
 
   const [search, setSearch] = useState(sp.get("q") ?? "");
   useEffect(() => {
@@ -180,6 +276,11 @@ export function PostingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  useEffect(() => {
+    if (Number.isFinite(openId) && openId > 0) setExpanded((s) => (s.has(openId) ? s : new Set([...s, openId])));
+  }, [openId]);
+  useEffect(() => setCursor(-1), [query, rule]);
+
   function update(key: string, value: string | null) {
     setSp(
       (prev) => {
@@ -187,6 +288,10 @@ export function PostingsPage() {
         if (value == null || value === "") next.delete(key);
         else next.set(key, value);
         next.delete("open");
+        if (key === "vista") {
+          next.delete("scartati");
+          next.delete("regola");
+        }
         return next;
       },
       { replace: true },
@@ -209,27 +314,79 @@ export function PostingsPage() {
     return [...set].sort().map((s) => ({ value: s, label: sourceLabel(s) }));
   }, [all.data, settings.data, sp]);
 
-  const activeFilters = ["priorita", "zona", "tipo", "stato", "fonte", "q", "scartati"].filter((k) => sp.get(k)).length;
+  const activeFilters = ["priorita", "zona", "tipo", "stato", "fonte", "q"].filter((k) => sp.get(k)).length;
+  const shown = data ? data.slice(0, Math.max(limit, data.findIndex((p) => p.id === openId) + 1)) : [];
+
+  const toggle = useCallback((id: number) => setExpanded((s) => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  }), []);
+
+  function focusRow(index: number) {
+    if (!data || data.length === 0) return;
+    if (index < 0) {
+      setAnnounce("Sei al primo annuncio.");
+      index = 0;
+    } else if (index >= data.length) {
+      setAnnounce("Fine dell'elenco.");
+      index = data.length - 1;
+    } else setAnnounce("");
+    if (index >= limit) setLimit(Math.ceil((index + 1) / PAGE) * PAGE);
+    setCursor(index);
+    const id = data[index]!.id;
+    window.requestAnimationFrame(() => {
+      const btn = listRef.current?.querySelector<HTMLButtonElement>(`[data-row-toggle="${id}"]`);
+      btn?.focus({ preventScroll: true });
+      btn?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  const current = data && cursor >= 0 ? data[cursor] : undefined;
+  const onRowButton = () => document.activeElement instanceof HTMLElement && document.activeElement.hasAttribute("data-row-toggle");
+  useShortcuts({
+    j: () => focusRow(cursor + 1),
+    k: () => focusRow(cursor - 1),
+    ArrowDown: () => (onRowButton() ? focusRow(cursor + 1) : false),
+    ArrowUp: () => (onRowButton() ? focusRow(cursor - 1) : false),
+    o: () => (current ? toggle(current.id) : false),
+    Enter: () => (current ? toggle(current.id) : false),
+    p: () => (current ? navigate(`/annunci/${current.id}/pacchetto`) : false),
+    s: () => (current && current.user_status !== "sent" ? actions.markSent(current) : false),
+    x: () => (current && current.user_status === "todo" ? actions.skip(current) : false),
+    r: () => (current && current.filter_state === "rejected" ? actions.restore(current) : false),
+    "/": () => searchRef.current?.focus(),
+  });
 
   return (
     <>
-      <PageHeader title="Annunci" subtitle="Filtrati e valutati ogni giorno. Decidi tu cosa candidare." actions={<AddFromUrl />} />
+      <PageHeader title="Annunci" subtitle={VIEW_INFO[view].line} actions={<AddFromUrl />} />
+      <ViewSwitch view={view} onChange={(v) => update("vista", v === "stage" ? null : v)} />
+      <p className="sr-only" aria-live="polite">
+        {`Vista ${VIEW_INFO[view].label}`}
+      </p>
 
-      <div role="search" className="card mb-5 p-4" aria-label="Filtri annunci">
+      <div role="search" className="card mb-5 mt-4 p-4" aria-label="Filtri annunci">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2">
             <label htmlFor={searchId} className="label">
-              Cerca
+              Cerca <span className="font-normal text-ink-muted">(tasto /)</span>
             </label>
             <div className="relative">
               <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
+                ref={searchRef}
                 id={searchId}
                 type="search"
                 className="field pl-9"
                 placeholder="Titolo, azienda o città"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") e.currentTarget.blur();
+                }}
+                aria-keyshortcuts="/"
               />
             </div>
           </div>
@@ -286,58 +443,76 @@ export function PostingsPage() {
           </div>
           </div>
         </div>
-        <div className={`mt-3 flex-wrap items-center justify-between gap-3 ${filtersOpen ? "flex" : "hidden md:flex"}`}>
-          <div className="flex items-center gap-2">
-            <input
-              id={rejectedId}
-              type="checkbox"
-              className="h-4 w-4 accent-[var(--color-accent)]"
-              checked={sp.get("scartati") === "1"}
-              onChange={(e) => update("scartati", e.target.checked ? "1" : null)}
-            />
-            <label htmlFor={rejectedId} className="text-sm">
-              Mostra scartati dai filtri
-            </label>
-          </div>
-          {activeFilters > 0 && (
+        {activeFilters > 0 && (
+          <div className={`mt-3 justify-end ${filtersOpen ? "flex" : "hidden md:flex"}`}>
             <button
               type="button"
               className="btn-ghost btn-sm"
               onClick={() => {
                 setSearch("");
-                setSp(new URLSearchParams(), { replace: true });
+                setSp(view === "stage" ? new URLSearchParams() : new URLSearchParams({ vista: view }), { replace: true });
               }}
             >
               <Icon name="x" size={14} /> Azzera filtri
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <p className="mb-3 text-sm text-ink-muted" aria-live="polite" aria-atomic="true">
-        {isPending ? "" : data ? `${data.length === 1 ? "1 annuncio" : `${data.length} annunci`}${isFetching ? " · aggiornamento…" : ""}` : ""}
+      {view === "scartati" && viewItems && <RuleChips items={viewItems} value={rule} onChange={(v) => update("regola", v)} />}
+
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm text-ink-muted" aria-live="polite" aria-atomic="true">
+          {isPending ? "" : data ? `${data.length === 1 ? "1 annuncio" : `${data.length} annunci`}${isFetching ? " · aggiornamento…" : ""}` : ""}
+        </p>
+        <p className="hidden text-xs text-ink-muted md:block">
+          Tastiera: <kbd className="rounded border border-line-strong bg-surface px-1">j</kbd> <kbd className="rounded border border-line-strong bg-surface px-1">k</kbd> per
+          muoverti, <kbd className="rounded border border-line-strong bg-surface px-1">?</kbd> per tutte le scorciatoie
+        </p>
+      </div>
+      <p className="sr-only" aria-live="polite">
+        {announce}
       </p>
 
       {isPending ? (
         <ListSkeleton rows={5} label="Caricamento annunci…" />
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
-      ) : data.length === 0 ? (
-        <EmptyState title="Nessun annuncio con questi filtri" icon="search">
-          {activeFilters > 0 ? "Prova ad allentare i filtri o ad azzerarli." : "Gli annunci compariranno dopo la prossima esecuzione di radar run."}
+      ) : !data || data.length === 0 ? (
+        <EmptyState title={emptyTitle(view, activeFilters > 0 || !!rule)} icon={view === "scartati" ? "check" : "search"}>
+          {emptyText(view, activeFilters > 0 || !!rule)}
         </EmptyState>
       ) : (
         <>
         <h2 className="sr-only">Elenco annunci</h2>
-        <ul className="space-y-3" aria-label="Elenco annunci">
-          {data.slice(0, Math.max(limit, data.findIndex((p) => p.id === openId) + 1)).map((p) => (
-            <PostingRow key={p.id} posting={p} defaultOpen={p.id === openId} />
+        <ul
+          ref={listRef}
+          className="space-y-3"
+          aria-label={`Elenco annunci, vista ${VIEW_INFO[view].label}`}
+          onFocusCapture={(e) => {
+            const id = Number((e.target as HTMLElement).closest("[data-posting-id]")?.getAttribute("data-posting-id"));
+            if (id) {
+              const i = data.findIndex((p) => p.id === id);
+              if (i >= 0 && i !== cursor) setCursor(i);
+            }
+          }}
+        >
+          {shown.map((p, i) => (
+            <PostingRow
+              key={p.id}
+              posting={p}
+              defaultOpen={p.id === openId}
+              open={expanded.has(p.id)}
+              onToggle={() => toggle(p.id)}
+              active={i === cursor}
+              position={{ index: i, total: data.length }}
+            />
           ))}
         </ul>
-        {data.length > limit && (
+        {data.length > shown.length && (
           <div className="mt-4 flex justify-center">
             <button type="button" className="btn-secondary" onClick={() => setLimit((l) => l + PAGE)}>
-              Mostra altri {Math.min(PAGE, data.length - limit)} (ne restano {data.length - limit})
+              Mostra altri {Math.min(PAGE, data.length - shown.length)} (ne restano {data.length - shown.length})
             </button>
           </div>
         )}
@@ -345,4 +520,18 @@ export function PostingsPage() {
       )}
     </>
   );
+}
+
+function emptyTitle(view: View, filtered: boolean): string {
+  if (filtered) return "Nessun annuncio con questi filtri";
+  if (view === "scartati") return "Nessun annuncio scartato";
+  if (view === "laurea") return "Nessun annuncio dopo la laurea, per ora";
+  return "Nessun annuncio, per ora";
+}
+
+function emptyText(view: View, filtered: boolean): string {
+  if (filtered) return "Prova ad allentare i filtri o ad azzerarli.";
+  if (view === "scartati") return "I filtri non hanno escluso nulla: tutto quello che è arrivato è tra gli annunci attivi.";
+  if (view === "laurea") return "Qui compaiono graduate program e ruoli junior. Il prossimo giro è domattina alle 7.";
+  return "Gli annunci nuovi arrivano con il prossimo giro, domattina alle 7. Puoi anche aggiungerne uno da un link.";
 }

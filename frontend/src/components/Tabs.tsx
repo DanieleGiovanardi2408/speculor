@@ -53,7 +53,7 @@ export function Tabs<K extends string>({
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(t.key)}
               onKeyDown={(e) => onKeyDown(e, i)}
-              className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-sm sm:px-3 font-medium ${
+              className={`-mb-px flex min-h-11 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-sm sm:px-3 font-medium ${
                 selected ? "border-accent text-accent-ink" : "border-transparent text-ink-muted hover:text-ink"
               }`}
             >

@@ -34,8 +34,16 @@ interface PostingSummary {
   filter_hits: FilterHit[];             // flags and rejections
   has_pack: boolean;
   track: Track;                         // computed from filter_hits, see "Tracks" below
+  skip_reason: string | null;           // parsed from the "[Saltato: reason]" note prefix
 }
 type Track = "internship" | "post_graduation";
+interface RunDetail extends RunSummary { report_md: string | null }  // Markdown, private
+interface UsageRow { day: string; provider: string; model: string; purpose: string;
+  requests: number; input_tokens: number; output_tokens: number }
+interface UsageTotal { provider: string; model: string; requests: number;
+  input_tokens: number; output_tokens: number }
+interface Usage { since: string; until: string; rows: UsageRow[];  // by local day/model/purpose
+  today: UsageTotal[]; period: UsageTotal[] }                     // totals by model
 interface ChangeEventOut { kind: "new" | "changed" | "closed" | "reopened";
   changes: Record<string, [unknown, unknown]> | null; at: string; run_id: number | null }
 interface PostingDetail extends PostingSummary { raw_text: string | null; via: string | null;
@@ -87,8 +95,9 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | GET | /api/postings | query: `priority, zone, type, status, source, user_status, q, sort (priority\|deadline\|company\|first_seen), include_rejected (bool, default false), only_rejected (bool), track (internship\|post_graduation\|all, default internship)` | PostingSummary[] |
 | GET | /api/postings/{id} | | PostingDetail |
 | POST | /api/postings | `{url}` manual add | PostingDetail |
-| PATCH | /api/postings/{id} | `{user_status?, status?, note?}` | PostingDetail |
+| PATCH | /api/postings/{id} | `{user_status?, status?, note?, skip_reason?}` (see "Skip reasons") | PostingDetail |
 | POST | /api/postings/{id}/override | (marks all reject hits and the `post_graduation` flag overridden, filter_state=overridden; the posting moves to the internship track) | PostingDetail |
+| DELETE | /api/postings/{id}/override | undo a restore: overridden hits count again, filter_state back to `rejected` (or `flagged`/`pass` without reject hits) | PostingDetail |
 | POST | /api/postings/{id}/mark-sent | `{channel, cv_version, date_sent?}` | Application |
 | GET | /api/postings/{id}/pack | | Pack (404 if none) |
 | POST | /api/postings/{id}/pack | generate now (LLM) | Pack |
@@ -109,6 +118,8 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | GET | /api/settings | | SettingsOut |
 | PUT | /api/settings | SettingsOut (partial ok) | SettingsOut |
 | GET | /api/runs | query `limit` (default 10) | RunSummary[] |
+| GET | /api/runs/{id} | | RunDetail (404 unknown id) |
+| GET | /api/usage | query `days` (1-90, default 7; today included, Europe/Amsterdam days) | Usage (sums of `llm_usage` rows; counts only) |
 
 Rules: no route ever submits an application or sends a message. `followup_due` = stage
 `Inviata`, not responded, `date_sent` 14+ days ago. "Since yesterday" = change events in the
@@ -123,6 +134,12 @@ the internship track by default; `track=post_graduation` gives the separate view
 `track=all` both (the `include_rejected` / `only_rejected` switches apply on top). In Today,
 `new_since_yesterday` and `upcoming_deadlines` are internship-only and `new_post_graduation`
 counts the new post-graduation postings.
+
+Skip reasons: there is no column; the reason is stored as a prefix of `Posting.note`:
+`"[Saltato: Sede: solo Londra] my own note"`. `PATCH {skip_reason}` (max 200 chars) sets
+`user_status=skipped` (unless `user_status` is also given) and writes the prefix; patching
+`note` alone keeps an existing prefix; any `user_status` other than `skipped` removes it.
+`note` in responses is the raw stored text, `skip_reason` the parsed reason (null if none).
 
 Notes: list filters (`priority, zone, type, status, source, user_status` on postings; `status` on
 drafts) also accept comma-separated values; `priority=none` matches unscored postings and

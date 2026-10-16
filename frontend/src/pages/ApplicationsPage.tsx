@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAppStats, useApplications, useCreateApplication, usePatchApplication } from "../api/hooks";
 import type { Application, ApplicationPatch, Stage, StatsRow } from "../api/types";
 import { Badge } from "../components/Badge";
@@ -25,7 +26,7 @@ function usePatch(app: Application) {
     // mutateAsync: the card may remount in another column before the request settles.
     patch.mutateAsync({ id: app.id, patch: p }).then(
       () => toast.success(msg),
-      (e: Error) => toast.error(`Modifica non salvata: ${e.message}`),
+      (e: Error) => toast.error(`Modifica non salvata. ${e.message}`),
     );
 }
 
@@ -71,12 +72,19 @@ function BlurTextField({
   );
 }
 
-function ApplicationCard({ app }: { app: Application }) {
-  const [open, setOpen] = useState(false);
+function ApplicationCard({ app, focus = false }: { app: Application; focus?: boolean }) {
+  const [open, setOpen] = useState(focus);
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!focus) return;
+    setOpen(true);
+    ref.current?.scrollIntoView({ block: "center" });
+    ref.current?.querySelector<HTMLElement>("select")?.focus({ preventScroll: true });
+  }, [focus]);
   const ids = { stage: useId(), panel: useId(), date: useId(), resp: useId() };
   const save = usePatch(app);
   return (
-    <li className="card p-4">
+    <li ref={ref} className={`card p-4 ${focus ? "ring-2 ring-accent/60" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium leading-snug">{app.role}</p>
@@ -91,6 +99,11 @@ function ApplicationCard({ app }: { app: Application }) {
           </Badge>
         )}
       </div>
+      {app.followup_due && focus && (
+        <p className="mt-2 rounded-lg bg-warning-soft p-2 text-xs text-warning-ink">
+          Nessuna risposta da più di 14 giorni: scrivi un breve follow-up (email o LinkedIn), poi aggiorna la fase o segna la risposta qui sotto.
+        </p>
+      )}
       <p className="mt-2 text-xs text-ink-muted">
         Inviata il {formatDate(app.date_sent)} · {app.channel} · {app.cv_version}
       </p>
@@ -155,7 +168,7 @@ function ApplicationCard({ app }: { app: Application }) {
   );
 }
 
-function Pipeline({ apps }: { apps: Application[] }) {
+function Pipeline({ apps, focusId }: { apps: Application[]; focusId?: number }) {
   return (
     <div className="-mx-4 flex flex-col gap-6 px-4 lg:flex-row lg:gap-4 relative lg:overflow-x-auto lg:pb-4">
       {STAGES.map((stage) => {
@@ -175,7 +188,7 @@ function Pipeline({ apps }: { apps: Application[] }) {
             ) : (
               <ul className="space-y-3">
                 {items.map((a) => (
-                  <ApplicationCard key={a.id} app={a} />
+                  <ApplicationCard key={a.id} app={a} focus={a.id === focusId} />
                 ))}
               </ul>
             )}
@@ -373,6 +386,8 @@ export function ApplicationsPage() {
   const stats = useAppStats();
   const [addOpen, setAddOpen] = useState(false);
   const due = apps.data?.filter((a) => a.followup_due).length ?? 0;
+  const [sp] = useSearchParams();
+  const focusId = Number(sp.get("apri")) || undefined;
 
   return (
     <>
@@ -395,7 +410,7 @@ export function ApplicationsPage() {
             Quando segni un annuncio come inviato, comparirà qui.
           </EmptyState>
         ) : (
-          <Pipeline apps={apps.data} />
+          <Pipeline apps={apps.data} focusId={focusId} />
         )}
       </Section>
 

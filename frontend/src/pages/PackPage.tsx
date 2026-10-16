@@ -81,11 +81,12 @@ function PackEditor({ pack }: { pack: Pack }) {
   function save() {
     patch.mutate(
       { id: pack.id, patch: changes },
-      { onSuccess: () => toast.success("Pacchetto salvato."), onError: (e) => toast.error(`Salvataggio non riuscito: ${e.message}`) },
+      { onSuccess: () => toast.success("Pacchetto salvato."), onError: (e) => toast.error(`Salvataggio non riuscito. ${e.message}`) },
     );
   }
 
   const words = wordCount(cover);
+  const sent = pack.posting.user_status === "sent";
   const allIssues = pack.style_issues;
 
   return (
@@ -93,10 +94,39 @@ function PackEditor({ pack }: { pack: Pack }) {
       <div className="sticky top-[61px] z-20 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface/95 p-3 shadow-sm backdrop-blur md:top-3">
         <UnsavedIndicator dirty={dirty} />
         {!dirty && <span className="text-xs text-ink-muted">Tutte le modifiche sono salvate.</span>}
-        <button type="button" className="btn-primary" disabled={!dirty || patch.isPending} onClick={save}>
-          {patch.isPending ? "Salvataggio…" : "Salva modifiche"}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden flex-wrap gap-2 md:flex">
+            <CopyButton text={cover} label="Copia lettera" size="md" />
+            <ExternalLink href={pack.apply_link} className="btn-secondary">
+              Apri candidatura
+            </ExternalLink>
+            {!sent && (
+              <button type="button" className="btn-secondary" onClick={() => setSentOpen(true)}>
+                <Icon name="check" size={14} /> Segna come inviata
+              </button>
+            )}
+          </span>
+          <button type="button" className="btn-primary" disabled={!dirty || patch.isPending} onClick={save}>
+            {patch.isPending ? "Salvataggio…" : "Salva modifiche"}
+          </button>
+        </div>
+      </div>
+
+      {/* Phone: the three things you need while applying, always within reach. */}
+      <div
+        role="toolbar"
+        aria-label="Azioni rapide del pacchetto"
+        className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-3 gap-2 border-t border-line bg-surface/95 px-3 py-2 backdrop-blur md:hidden"
+      >
+        <CopyButton text={cover} label="Copia lettera" size="md" />
+        <ExternalLink href={pack.apply_link} className="btn-secondary px-2 text-[13px]">
+          Apri link
+        </ExternalLink>
+        <button type="button" className="btn-primary px-2 text-[13px]" onClick={() => setSentOpen(true)} disabled={sent}>
+          <Icon name="check" size={14} /> {sent ? "Già inviata" : "Segna inviata"}
         </button>
       </div>
+
 
       {allIssues.length > 0 && (
         <div className="mb-6">
@@ -171,10 +201,14 @@ function PackEditor({ pack }: { pack: Pack }) {
               ))}
             </select>
           </div>
-          <ExternalLink href={pack.apply_link} className="btn-primary">
-            Vai alla pagina di candidatura
-          </ExternalLink>
+          <div className="flex flex-wrap gap-2">
+            <CopyButton text={pack.apply_link} label="Copia link" size="md" srContext="della pagina di candidatura" />
+            <ExternalLink href={pack.apply_link} className="btn-primary">
+              Vai alla pagina di candidatura
+            </ExternalLink>
+          </div>
         </div>
+        <p className="mt-2 break-all font-mono text-xs text-ink-muted">{pack.apply_link}</p>
         <p className="mt-2 text-xs text-ink-muted">Radar non compila né invia moduli: copia i testi e candidati tu dalla pagina dell'azienda.</p>
       </Section>
 
@@ -187,11 +221,12 @@ function PackEditor({ pack }: { pack: Pack }) {
           Hai inviato la candidatura?
         </h2>
         <p className="mt-1 text-sm text-ink-muted">Registrala per tenerla nella pipeline e ricevere il promemoria di follow-up dopo 14 giorni.</p>
-        <button type="button" className="btn-primary mt-4" onClick={() => setSentOpen(true)} disabled={pack.posting.user_status === "sent"}>
+        <button type="button" className="btn-primary mt-4" onClick={() => setSentOpen(true)} disabled={sent}>
           <Icon name="check" size={14} />
-          {pack.posting.user_status === "sent" ? "Già segnata come inviata" : "Segna come inviata"}
+          {sent ? "Già segnata come inviata" : "Segna come inviata"}
         </button>
       </section>
+      <div aria-hidden="true" className="h-16 md:hidden" />
       <MarkSentDialog open={sentOpen} onClose={() => setSentOpen(false)} postingId={pack.posting_id} postingTitle={pack.posting.title} defaultCv={cv} />
     </>
   );
@@ -205,7 +240,7 @@ export function PackPage() {
   const toast = useToast();
 
   const back = (
-    <Link to={`/annunci?open=${id}`} className="link mb-3 inline-flex items-center gap-1 text-sm">
+    <Link to={`/annunci?open=${id}`} className="link mb-3 inline-flex min-h-11 items-center gap-1 text-sm sm:min-h-0">
       <Icon name="chevronRight" size={14} className="rotate-180" /> Torna agli annunci
     </Link>
   );
@@ -237,7 +272,7 @@ export function PackPage() {
                   onClick={() =>
                     generate.mutate(id, {
                       onSuccess: () => toast.success("Pacchetto generato."),
-                      onError: (e) => toast.error(`Generazione non riuscita: ${e.message}`),
+                      onError: (e) => toast.error(`Generazione non riuscita. ${e.message}`),
                     })
                   }
                 >

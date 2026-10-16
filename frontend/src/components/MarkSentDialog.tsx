@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { useApplications, useMarkPostingSent } from "../api/hooks";
+import { useApplications, useMarkPostingSent, usePosting } from "../api/hooks";
+import { DEFAULT_CV, guessChannel } from "../lib/channel";
 import { todayIso } from "../lib/format";
 import { CHANNEL_OPTIONS } from "../lib/labels";
 import { Dialog } from "./Dialog";
@@ -27,9 +28,11 @@ export function MarkSentDialog({
   postingTitle: string;
   defaultCv?: string | null;
 }) {
+  // Detail carries `via` (how to apply); it is usually cached already.
+  const detail = usePosting(open ? postingId : NaN);
   const ids = { channel: useId(), cv: useId(), date: useId(), list: useId() };
   const cvs = useCvVersions([defaultCv]);
-  const [channel, setChannel] = useState(CHANNEL_OPTIONS[0]!);
+  const [channel, setChannel] = useState("Sito aziendale");
   const [cv, setCv] = useState(defaultCv ?? "");
   const [date, setDate] = useState(todayIso());
   const [error, setError] = useState<string | null>(null);
@@ -38,12 +41,15 @@ export function MarkSentDialog({
 
   useEffect(() => {
     if (open) {
-      setCv((c) => c || defaultCv || cvs[0] || "");
+      setCv(defaultCv || DEFAULT_CV);
       setDate(todayIso());
       setError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  useEffect(() => {
+    if (open) setChannel(guessChannel(detail.data?.source, detail.data?.via));
+  }, [open, detail.data?.source, detail.data?.via]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -53,7 +59,7 @@ export function MarkSentDialog({
     }
     mark.mutateAsync({ id: postingId, body: { channel, cv_version: cv.trim(), date_sent: date } }).then(
       () => {
-        toast.success("Candidatura registrata. La trovi in Candidature.");
+        toast.success(`Candidatura registrata (${channel}, ${cv.trim()}). La trovi in Candidature.`);
         onClose();
       },
       (err: Error) => setError(err.message),
@@ -65,14 +71,14 @@ export function MarkSentDialog({
       open={open}
       onClose={onClose}
       title="Segna come inviata"
-      description={`Registra che hai inviato tu la candidatura per “${postingTitle}”. Radar non invia nulla.`}
+      description={`Registra che hai inviato tu la candidatura per “${postingTitle}”. Radar non invia nulla. Premi Invio per confermare.`}
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
         <div>
           <label htmlFor={ids.channel} className="label">
             Canale
           </label>
-          <select id={ids.channel} className="field" value={channel} onChange={(e) => setChannel(e.target.value)} data-autofocus>
+          <select id={ids.channel} className="field" value={channel} onChange={(e) => setChannel(e.target.value)}>
             {CHANNEL_OPTIONS.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -114,7 +120,7 @@ export function MarkSentDialog({
           <button type="button" className="btn-secondary" onClick={onClose}>
             Annulla
           </button>
-          <button type="submit" className="btn-primary" disabled={mark.isPending}>
+          <button type="submit" className="btn-primary" disabled={mark.isPending} data-autofocus>
             {mark.isPending ? "Salvataggio…" : "Segna come inviata"}
           </button>
         </div>

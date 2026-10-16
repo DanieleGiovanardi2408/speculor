@@ -54,7 +54,7 @@
 }
 
 @utility btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium leading-5 transition-colors disabled:cursor-not-allowed disabled:opacity-60 min-h-10 whitespace-nowrap;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium leading-5 transition-colors disabled:cursor-not-allowed disabled:opacity-60 min-h-11 sm:min-h-10 whitespace-nowrap;
 }
 
 @utility btn-primary {
@@ -75,7 +75,7 @@
 
 
 @utility field {
-    @apply block w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus-visible:border-accent;
+    @apply block min-h-11 w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-faint focus-visible:border-accent sm:min-h-10 sm:text-sm;
 }
 
 @utility label {
@@ -100,10 +100,25 @@
   padding: 0.25rem 0.625rem;
   font-size: 13px;
 }
+/* Phones: every tap target is at least 44px tall. */
+@media (max-width: 639.98px) {
+  .btn-sm {
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+kbd {
+  font-family: var(--font-mono);
+}
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

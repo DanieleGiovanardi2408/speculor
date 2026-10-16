@@ -2,7 +2,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { vi } from "vitest";
+import { PostingActionsProvider } from "../components/PostingActions";
 import { ToastProvider } from "../components/Toast";
+import { handleMock, resetMockDb } from "../mocks/handler";
 import type { PostingSummary } from "../api/types";
 
 export function renderWithProviders(ui: ReactElement, { route = "/" } = {}) {
@@ -10,7 +13,9 @@ export function renderWithProviders(ui: ReactElement, { route = "/" } = {}) {
   return render(
     <QueryClientProvider client={qc}>
       <ToastProvider>
-        <MemoryRouter initialEntries={[route]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={[route]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <PostingActionsProvider>{ui}</PostingActionsProvider>
+        </MemoryRouter>
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -53,4 +58,18 @@ export function makePosting(over: Partial<PostingSummary> = {}): PostingSummary 
     has_pack: false,
     ...over,
   };
+}
+
+/** Routes `fetch` to the in-memory mock API; returns the spy to inspect calls. */
+export function useMockApi() {
+  resetMockDb();
+  const spy = vi.fn(async (input: string, init?: RequestInit) => {
+    const url = new URL(input, "http://localhost");
+    const query = Object.fromEntries(url.searchParams.entries());
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const res = await handleMock(init?.method ?? "GET", url.pathname, query, body);
+    return new Response(res.body === undefined ? null : JSON.stringify(res.body), { status: res.status });
+  });
+  vi.stubGlobal("fetch", spy);
+  return spy;
 }

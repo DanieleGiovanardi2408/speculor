@@ -22,7 +22,7 @@ export function Switch({ checked, onChange, label, description }: { checked: boo
         aria-labelledby={`${id}-label`}
         aria-describedby={description ? `${id}-desc` : undefined}
         onClick={() => onChange(!checked)}
-        className="flex shrink-0 items-center gap-2 rounded-full"
+        className="flex min-h-11 shrink-0 items-center gap-2 rounded-full px-1 sm:min-h-0"
       >
         <span className={`w-8 text-right text-xs font-medium ${checked ? "text-accent-ink" : "text-ink-muted"}`} aria-hidden="true">
           {checked ? "Sì" : "No"}

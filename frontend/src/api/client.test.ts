@@ -18,7 +18,12 @@ describe("apiRequest", () => {
 
   it("throws ApiError with the FastAPI detail message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => new Response(JSON.stringify({ detail: "Non trovato" }), { status: 404 })));
-    await expect(apiRequest("/api/postings/9/pack")).rejects.toMatchObject({ status: 404, message: "Non trovato" });
+    await expect(apiRequest("/api/postings/9/pack")).rejects.toMatchObject({ status: 404, message: expect.stringContaining("Non trovo questo elemento") });
     await expect(apiRequest("/api/postings/9/pack")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("explains an unreachable server in plain Italian", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    await expect(apiRequest("/api/today")).rejects.toMatchObject({ status: 0, message: expect.stringContaining("make dev-real") });
   });
 });

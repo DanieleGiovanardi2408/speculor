@@ -57,11 +57,12 @@ export function PriorityBadge({ priority }: { priority: Priority | null }) {
   );
 }
 
-export function UserStatusBadge({ status }: { status: UserStatus }) {
+export function UserStatusBadge({ status, reason }: { status: UserStatus; reason?: string | null }) {
   if (status === "todo") return null;
   return (
-    <Badge tone={status === "sent" ? "success" : "neutral"} icon={status === "sent" ? "check" : "skip"}>
+    <Badge tone={status === "sent" ? "success" : "neutral"} icon={status === "sent" ? "check" : "skip"} className={reason ? "max-w-full whitespace-normal" : ""}>
       {USER_STATUS_LABEL[status]}
+      {status === "skipped" && reason && <span className="font-normal">: {reason}</span>}
     </Badge>
   );
 }

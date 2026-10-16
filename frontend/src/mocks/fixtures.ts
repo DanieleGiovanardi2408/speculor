@@ -232,6 +232,7 @@ const seeds: Seed[] = [
     why: "Componente analitica presente.",
     not: "Prevalentemente attività amministrative.",
     user_status: "skipped",
+    note: "[Saltato: Sede] Solo in presenza, troppo lontano.",
   },
   {
     title: "Strategy Intern, Energy Transition",
@@ -302,7 +303,9 @@ export const postingsSeed: PostingDetail[] = seeds.map((s, i) => {
     score: s.priority && s.why ? score(s.priority, s.why, s.not ?? "", s.warnings) : null,
     filter_hits: filterHits,
     has_pack: id === 101 || id === 112,
-    raw_text: "Testo dell'annuncio di esempio (dati fittizi).",
+    track: /graduate|full.?time/i.test(s.type) ? "post_graduation" : "internship",
+    skip_reason: (s.user_status ?? "todo") === "skipped" ? (/^\[Saltato: ([^\]]+)\]/.exec(s.note ?? "")?.[1] ?? null) : null,
+    raw_text: `${s.company} cerca: ${s.title}, area ${s.area}, sede ${s.location}. ${filterHits.map((h) => h.evidence).filter(Boolean).join(". ")} Requisiti: Python, SQL, curiosità. (Annuncio fittizio di esempio.)`,
     via: s.source === "manual" ? "manual" : null,
     history: [{ kind: "new", changes: null, at: isoTs(s.firstSeen), run_id: 40 }],
     pack_id: id === 101 ? 1 : id === 112 ? 2 : null,
@@ -473,6 +476,11 @@ export const applicationsSeed: Application[] = [
   app(7, "Acquaviva Energia", "Summer Internship", "Bologna", 40, "Email", "cv-finance-it-v2", "Nessuna risposta"),
   app(8, "Nebbia Labs", "Stage Analytics (call precedente)", "Milano", 1, "Sito aziendale", "cv-data-it-v3", "Screening HR", { next_step: "Telefonata HR", next_step_date: isoDate(1) }),
 ];
+
+export const reportsSeed: Record<number, string> = {
+  41: "# Radar daily report (demo)\n\nRun #41 · status **partial**\n\nNew **6** (passed 4, flagged 2, rejected 2) · changed 2 · closed 1\n\n## Sources\n\n| Source | Boards | Fetched | New | Errors |\n|---|---:|---:|---:|---:|\n| greenhouse | 3 | 42 | 3 | 0 |\n| careers\\_page | 1 | 0 | 0 | 1 |\n\n## New postings that passed the filters\n\n### Alta\n\n- **Stage Data Analyst** — Nebbia Labs (Milano) · [link](https://jobs.example.com/nebbia-labs/101)\n  - Why: SQL e Python richiesti.\n\n## Errors\n\n- careers\\_page: `ReadTimeout`\n",
+  40: "# Radar daily report (demo)\n\nRun #40 · status **ok**\n\n- 3 new, 1 closed\n",
+};
 
 export const runsSeed: RunSummary[] = [
   {

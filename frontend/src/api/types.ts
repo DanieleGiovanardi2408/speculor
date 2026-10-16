@@ -5,6 +5,8 @@ export type FilterState = "pass" | "flagged" | "rejected" | "overridden";
 export type PostingStatus = "open" | "closed" | "unknown";
 export type UserStatus = "todo" | "sent" | "skipped";
 export type DraftStatus = "draft" | "approved" | "sent" | "skipped" | "failed";
+/** `internship` (default list) or `post_graduation` (graduate programmes, junior roles). */
+export type PostingTrack = "internship" | "post_graduation";
 export type DraftKind = "linkedin_connection_note" | "linkedin_message" | "followup" | "email";
 export type Stage =
   | "Inviata"
@@ -63,6 +65,10 @@ export interface PostingSummary {
   /** Flags and rejections. */
   filter_hits: FilterHit[];
   has_pack: boolean;
+  /** Added by the backend in parallel; older servers omit it. */
+  track?: PostingTrack | null;
+  /** Parsed from the "[Saltato: reason]" note prefix; older servers omit it. */
+  skip_reason?: string | null;
 }
 
 export interface ChangeEventOut {
@@ -170,6 +176,37 @@ export interface RunSummary {
   stats: Record<string, unknown> | null;
 }
 
+export interface RunDetail extends RunSummary {
+  report_md: string | null;
+}
+
+export interface UsageRow {
+  day: string;
+  provider: string;
+  model: string;
+  purpose: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface UsageTotal {
+  provider: string;
+  model: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+/** GET /api/usage: LLM usage of the last `days` local days (default 7). */
+export interface Usage {
+  since: string;
+  until: string;
+  rows: UsageRow[];
+  today: UsageTotal[];
+  period: UsageTotal[];
+}
+
 export interface Today {
   weekly_goal: number;
   applications_this_week: number;
@@ -179,6 +216,8 @@ export interface Today {
   followups_due: Application[];
   pending_approvals: number;
   last_run: RunSummary | null;
+  /** New post-graduation postings in the latest run; older servers omit it. */
+  new_post_graduation?: number;
 }
 
 export interface Company {
@@ -217,12 +256,15 @@ export interface PostingsQuery {
   sort?: PostingSort;
   include_rejected?: boolean;
   only_rejected?: boolean;
+  track?: PostingTrack | "all";
 }
 
 export interface PostingPatch {
   user_status?: UserStatus;
   status?: PostingStatus;
   note?: string | null;
+  /** Non-empty: posting becomes "skipped" and the reason is stored as a note prefix. */
+  skip_reason?: string;
 }
 
 export interface MarkSentBody {

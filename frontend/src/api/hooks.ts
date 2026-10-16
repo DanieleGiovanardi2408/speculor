@@ -27,10 +27,12 @@ import type {
   PostingPatch,
   PostingSummary,
   PostingsQuery,
+  RunDetail,
   RunSummary,
   SettingsOut,
   SettingsPatch,
   Today,
+  Usage,
 } from "./types";
 
 export const qk = {
@@ -46,6 +48,8 @@ export const qk = {
   companies: ["companies"] as const,
   settings: ["settings"] as const,
   runs: (limit: number) => ["runs", limit] as const,
+  run: (id: number) => ["run", id] as const,
+  usage: (days: number) => ["usage", days] as const,
 };
 
 // ---------- Queries ----------
@@ -118,6 +122,27 @@ export const useRuns = (limit = 10) =>
     queryFn: ({ signal }) => api.get<RunSummary[]>("/api/runs", { limit }, signal),
   });
 
+export const useRun = (id: number) =>
+  useQuery({
+    queryKey: qk.run(id),
+    queryFn: ({ signal }) => api.get<RunDetail>(`/api/runs/${id}`, undefined, signal),
+    enabled: Number.isFinite(id),
+  });
+
+/** LLM usage aggregates. Resolves to `null` on servers without GET /api/usage (404). */
+export const useUsage = (days = 7) =>
+  useQuery({
+    queryKey: qk.usage(days),
+    queryFn: async ({ signal }) => {
+      try {
+        return await api.get<Usage>("/api/usage", { days }, signal);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+  });
+
 // ---------- Optimistic helpers ----------
 
 type Snapshot = [QueryKey, unknown][];
@@ -158,7 +183,7 @@ export function usePatchPosting() {
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: qk.postingsAll });
       const snap = snapshot(qc, [qk.postingsAll, qk.posting(id)]);
-      patchPostingInCaches(qc, id, (p) => ({ ...p, ...patch }) as PostingSummary);
+      patchPostingInCaches(qc, id, (p) => optimisticPatch(p, patch));
       return { snap };
     },
     onError: (_e, _v, ctx) => restore(qc, ctx?.snap),
@@ -166,6 +191,28 @@ export function usePatchPosting() {
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: qk.today });
     },
+  });
+}
+
+function optimisticPatch(p: PostingSummary, patch: PostingPatch): PostingSummary {
+  const { skip_reason, note, ...rest } = patch;
+  const next: PostingSummary = { ...p, ...rest };
+  if (note !== undefined) next.note = note;
+  if (skip_reason) {
+    next.user_status = patch.user_status ?? "skipped";
+    next.skip_reason = skip_reason;
+  }
+  if (next.user_status !== "skipped") next.skip_reason = null;
+  return next;
+}
+
+/** Undo a restore (DELETE /override): the posting goes back among the rejected ones. */
+export function useUndoOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del<PostingDetail>(`/api/postings/${id}/override`),
+    onSuccess: (p) => writePosting(qc, p),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.postingsAll }),
   });
 }
 

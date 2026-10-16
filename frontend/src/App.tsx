@@ -8,6 +8,7 @@ import { CompaniesPage } from "./pages/CompaniesPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PackPage } from "./pages/PackPage";
 import { PostingsPage } from "./pages/PostingsPage";
+import { RunPage } from "./pages/RunPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TodayPage } from "./pages/TodayPage";
 
@@ -23,6 +24,7 @@ export const routes: RouteObject[] = [
       { path: "candidature", element: <ApplicationsPage /> },
       { path: "aziende", element: <CompaniesPage /> },
       { path: "impostazioni", element: <SettingsPage /> },
+      { path: "esecuzioni/:id", element: <RunPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

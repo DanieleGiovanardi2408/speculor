@@ -50,7 +50,7 @@ function DraftList({ status }: { status: TabKey }) {
               {g.company && <span className="font-normal text-ink-muted"> · {g.company}</span>}
             </h2>
             {g.postingId != null && (
-              <Link to={`/annunci/${g.postingId}/pacchetto`} className="link text-sm">
+              <Link to={`/annunci/${g.postingId}/pacchetto`} className="link inline-flex min-h-11 items-center text-sm sm:min-h-0">
                 Apri pacchetto
               </Link>
             )}

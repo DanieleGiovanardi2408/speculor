@@ -2,14 +2,19 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { Icon } from "./Icon";
 
 type ToastKind = "success" | "error" | "info";
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
 }
 interface ToastApi {
-  show: (message: string, kind?: ToastKind) => void;
-  success: (message: string) => void;
+  show: (message: string, kind?: ToastKind, action?: ToastAction) => void;
+  success: (message: string, action?: ToastAction) => void;
   error: (message: string) => void;
 }
 
@@ -27,15 +32,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const dismiss = useCallback((id: number) => setItems((xs) => xs.filter((t) => t.id !== id)), []);
   const show = useCallback(
-    (message: string, kind: ToastKind = "success") => {
+    (message: string, kind: ToastKind = "success", action?: ToastAction) => {
       const id = ++seq.current;
-      setItems((xs) => [...xs.slice(-3), { id, kind, message }]);
-      window.setTimeout(() => dismiss(id), kind === "error" ? 8000 : 4000);
+      setItems((xs) => [...xs.slice(-3), { id, kind, message, action }]);
+      // Undo toasts stay longer so there is time to reach the button.
+      window.setTimeout(() => dismiss(id), kind === "error" || action ? 10000 : 4000);
     },
     [dismiss],
   );
   const api = useMemo<ToastApi>(
-    () => ({ show, success: (m) => show(m, "success"), error: (m) => show(m, "error") }),
+    () => ({ show, success: (m, a) => show(m, "success", a), error: (m) => show(m, "error") }),
     [show],
   );
 
@@ -73,10 +79,22 @@ function ToastView({ item, onClose }: { item: ToastItem; onClose: () => void }) 
     >
       <Icon name={item.kind === "error" ? "alert" : item.kind === "info" ? "info" : "check"} className="mt-0.5 shrink-0" />
       <p className="flex-1">{item.message}</p>
+      {item.action && (
+        <button
+          type="button"
+          onClick={() => {
+            item.action!.onClick();
+            onClose();
+          }}
+          className="-my-1 shrink-0 rounded-md border border-white/40 px-2.5 py-1 text-sm font-semibold underline-offset-2 hover:bg-white/10 max-sm:min-h-11"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={onClose}
-        className="-m-1 rounded p-1 opacity-80 hover:opacity-100"
+        className="-m-1 grid place-items-center rounded p-1 opacity-80 hover:opacity-100 max-sm:min-h-11 max-sm:min-w-11"
         aria-label="Chiudi notifica"
       >
         <Icon name="x" size={14} />

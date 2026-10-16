@@ -782,6 +782,13 @@ _GAPS = {
 }
 
 
+# Skip reasons are stored as a "[Saltato: reason]" note prefix (see radar/api/routes/skip.py).
+_NOTES: dict[str, str] = {
+    "corvo_bi": "Ask about remote Fridays.",
+    "corvo_mkt": "[Saltato: Fuori target] Marketing role, not analytics.",
+}
+
+
 def _cover_letters() -> dict[str, str]:
     nebbia = f"""{AVAILABILITY_LINE}
 
@@ -1051,7 +1058,7 @@ def load_demo(session: Session) -> dict[str, int]:
             closed_at=closed_at,
             filter_state=p.filter_state,
             user_status=p.user_status,
-            note="Ask about remote Fridays." if p.key == "corvo_bi" else None,
+            note=_NOTES.get(p.key),
         )
         session.add(posting)
         session.flush()

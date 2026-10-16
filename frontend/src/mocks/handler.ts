@@ -19,7 +19,11 @@ import type {
   Stage,
   StatsRow,
   Today,
+  Usage,
+  UsageRow,
+  UsageTotal,
 } from "../api/types";
+import { splitSkip } from "../lib/skip";
 import {
   applicationsSeed,
   companiesSeed,
@@ -28,6 +32,7 @@ import {
   isoDate,
   packsSeed,
   postingsSeed,
+  reportsSeed,
   runsSeed,
   settingsSeed,
 } from "./fixtures";
@@ -85,6 +90,7 @@ const PRIO_RANK: Record<Priority, number> = { Alta: 0, Media: 1, Bassa: 2 };
 function listPostings(q: Record<string, unknown>): PostingSummary[] {
   const truthy = (v: unknown) => v === true || v === "true" || v === "1";
   let list = db.postings.slice();
+  if (q.track === "internship" || q.track === "post_graduation") list = list.filter((p) => p.track === q.track);
   if (truthy(q.only_rejected)) list = list.filter((p) => p.filter_state === "rejected");
   else if (!truthy(q.include_rejected)) list = list.filter((p) => p.filter_state !== "rejected");
   const eq = (key: keyof PostingSummary) => {
@@ -153,7 +159,30 @@ function today(): Today {
     followups_due: db.applications.map(withFollowup).filter((a) => a.followup_due),
     pending_approvals: db.drafts.filter((d) => d.status === "draft").length,
     last_run: db.runs[0] ?? null,
+    new_post_graduation: visible.filter((p) => p.first_seen >= yesterday && p.track === "post_graduation").length,
   };
+}
+
+function usage(days: number): Usage {
+  const models = [
+    { model: "openai/gpt-oss-20b", purpose: "scoring", requests: 6, input_tokens: 41210, output_tokens: 6120 },
+    { model: "openai/gpt-oss-120b", purpose: "pack", requests: 2, input_tokens: 7000, output_tokens: 3000 },
+  ];
+  const rows: UsageRow[] = [];
+  for (let d = 0; d < Math.min(days, 3); d++)
+    for (const m of models) rows.push({ day: isoDate(-d), provider: "mock", ...m, requests: m.requests - d, input_tokens: m.input_tokens - d * 1000 });
+  const total = (list: UsageRow[]): UsageTotal[] =>
+    [...new Set(list.map((r) => r.model))].map((model) => {
+      const rs = list.filter((r) => r.model === model);
+      return {
+        provider: "mock",
+        model,
+        requests: rs.reduce((n, r) => n + r.requests, 0),
+        input_tokens: rs.reduce((n, r) => n + r.input_tokens, 0),
+        output_tokens: rs.reduce((n, r) => n + r.output_tokens, 0),
+      };
+    });
+  return { since: isoDate(-(days - 1)), until: isoDate(0), rows, today: total(rows.filter((r) => r.day === isoDate(0))), period: total(rows) };
 }
 
 export async function handleMock(
@@ -220,7 +249,31 @@ export async function handleMock(
     case "PATCH /postings/:id": {
       const p = db.postings.find((x) => x.id === id);
       if (!p) return notFound();
-      Object.assign(p, b as PostingPatch);
+      const pb = b as PostingPatch;
+      if (pb.skip_reason && pb.skip_reason.length > 200) return bad("Motivo troppo lungo");
+      // Same rules as backend routes/skip.py: the reason lives in a "[Saltato: …]" note prefix.
+      let { reason, body } = splitSkip(p.note);
+      if (pb.note !== undefined) {
+        const given = splitSkip(pb.note);
+        body = given.body;
+        reason = given.reason ?? reason;
+      }
+      if (pb.user_status) p.user_status = pb.user_status;
+      if (pb.status) p.status = pb.status;
+      if (pb.skip_reason?.trim()) {
+        reason = pb.skip_reason.trim();
+        if (!pb.user_status) p.user_status = "skipped";
+      }
+      if (p.user_status !== "skipped") reason = null;
+      p.note = reason ? `[Saltato: ${reason}]${body ? ` ${body}` : ""}` : body || null;
+      p.skip_reason = reason;
+      return ok(p);
+    }
+    case "DELETE /postings/:id/override": {
+      const p = db.postings.find((x) => x.id === id);
+      if (!p) return notFound();
+      p.filter_hits = p.filter_hits.map((h) => ({ ...h, overridden: false }));
+      p.filter_state = p.filter_hits.some((h) => h.action === "reject") ? "rejected" : p.filter_hits.length ? "flagged" : "pass";
       return ok(p);
     }
     case "POST /postings/:id/override": {
@@ -452,6 +505,12 @@ export async function handleMock(
     }
     case "GET /runs":
       return ok(db.runs.slice(0, Number(query.limit ?? 10)));
+    case "GET /runs/:id": {
+      const r = db.runs.find((x) => x.id === id);
+      return r ? ok({ ...r, report_md: reportsSeed[r.id] ?? null }) : notFound();
+    }
+    case "GET /usage":
+      return ok(usage(Number(query.days ?? 7)));
   }
   return notFound();
 }

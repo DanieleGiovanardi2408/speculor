@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useGeneratePack, useOverridePosting, usePatchPosting } from "../api/hooks";
+import { useGeneratePack, usePatchPosting, usePosting } from "../api/hooks";
 import type { PostingSummary } from "../api/types";
 import { daysUntil, formatDate, formatShortDate, relativeDays } from "../lib/format";
 import { sourceLabel } from "../lib/labels";
+import { ruleLabel } from "../lib/plain";
+import { noteBody, skipReasonOf } from "../lib/skip";
 import { Badge, FilterStateBadge, PostingStatusBadge, PriorityBadge, UserStatusBadge } from "./Badge";
 import { ExternalLink } from "./ExternalLink";
 import { Icon } from "./Icon";
-import { MarkSentDialog } from "./MarkSentDialog";
+import { EvidenceSnippet } from "./Highlight";
+import { usePostingActions } from "./PostingActions";
 import { useToast } from "./Toast";
 
 function Deadline({ value }: { value: string | null }) {
@@ -26,16 +29,18 @@ function Deadline({ value }: { value: string | null }) {
 
 function NoteField({ posting }: { posting: PostingSummary }) {
   const id = useId();
-  const [value, setValue] = useState(posting.note ?? "");
+  // The "[Saltato: …]" prefix is shown as a badge; the backend keeps it when the note changes.
+  const body = noteBody(posting.note);
+  const [value, setValue] = useState(body);
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
   const patch = usePatchPosting();
   const toast = useToast();
-  const lastSaved = useRef(posting.note ?? "");
+  const lastSaved = useRef(body);
 
   useEffect(() => {
-    setValue(posting.note ?? "");
-    lastSaved.current = posting.note ?? "";
-  }, [posting.note]);
+    setValue(body);
+    lastSaved.current = body;
+  }, [body]);
 
   function save() {
     if (value === lastSaved.current) return;
@@ -50,7 +55,7 @@ function NoteField({ posting }: { posting: PostingSummary }) {
         },
         onError: (e) => {
           setSaved("idle");
-          toast.error(`Nota non salvata: ${e.message}`);
+          toast.error(`Nota non salvata. ${e.message}`);
         },
       },
     );
@@ -88,46 +93,89 @@ function NoteField({ posting }: { posting: PostingSummary }) {
   );
 }
 
-export function PostingRow({ posting, defaultOpen = false }: { posting: PostingSummary; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [sentOpen, setSentOpen] = useState(false);
+function RejectSummary({ posting, context }: { posting: PostingSummary; context?: string | null }) {
+  const hits = posting.filter_hits.filter((h) => h.action === "reject");
+  if (hits.length === 0) return null;
+  return (
+    <ul className="space-y-2">
+      {hits.map((h, i) => (
+        <li key={i} className="rounded-lg border border-danger/20 bg-danger-soft/40 p-3 text-sm">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Badge tone={h.overridden ? "neutral" : "danger"} icon={h.overridden ? "undo" : "x"}>
+              {h.overridden ? "Scarto annullato" : "Scartato"}: {ruleLabel(h.rule_id)}
+            </Badge>
+            <code className="font-mono text-xs text-ink-muted">{h.rule_id}</code>
+          </p>
+          <p className="mt-1.5">{h.reason}</p>
+          {h.evidence && (
+            <p className="mt-1.5 text-ink-muted">
+              <EvidenceSnippet evidence={h.evidence} text={context} />
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function PostingRow({
+  posting,
+  defaultOpen = false,
+  open: openProp,
+  onToggle,
+  active = false,
+  position,
+}: {
+  posting: PostingSummary;
+  defaultOpen?: boolean;
+  /** Controlled expansion (keyboard navigation); uncontrolled when omitted. */
+  open?: boolean;
+  onToggle?: () => void;
+  /** Current row of the keyboard cursor. */
+  active?: boolean;
+  position?: { index: number; total: number };
+}) {
+  const [openState, setOpenState] = useState(defaultOpen);
+  const open = openProp ?? openState;
+  const toggle = onToggle ?? (() => setOpenState((o) => !o));
   const panelId = useId();
   const rowRef = useRef<HTMLLIElement>(null);
   const patch = usePatchPosting();
-  const override = useOverridePosting();
+  const actions = usePostingActions();
   const generate = useGeneratePack();
+  const detail = usePosting(open && hasEvidence(posting) ? posting.id : NaN);
   const navigate = useNavigate();
   const toast = useToast();
   const p = posting;
   const rejected = p.filter_state === "rejected";
   const flagged = p.filter_state === "flagged" || p.filter_hits.some((h) => h.action === "flag" && !h.overridden);
+  const skipReason = skipReasonOf(p);
+  const context = detail.data?.raw_text;
 
   useEffect(() => {
     if (defaultOpen) rowRef.current?.scrollIntoView({ block: "center" });
   }, [defaultOpen]);
 
-  function setUserStatus(user_status: PostingSummary["user_status"], msg: string) {
-    // mutateAsync: the row may disappear from a filtered list before the request settles.
-    patch.mutateAsync({ id: p.id, patch: { user_status } }).then(
-      () => toast.success(msg),
-      (e: Error) => toast.error(`Operazione non riuscita: ${e.message}`),
-    );
-  }
   function setStatus(status: PostingSummary["status"], msg: string) {
     patch.mutateAsync({ id: p.id, patch: { status } }).then(
       () => toast.success(msg),
-      (e: Error) => toast.error(`Operazione non riuscita: ${e.message}`),
+      (e: Error) => toast.error(`Operazione non riuscita. ${e.message}`),
     );
   }
 
   return (
-    <li ref={rowRef} className={`card overflow-hidden ${rejected ? "border-dashed bg-surface/70" : ""}`}>
+    <li
+      ref={rowRef}
+      data-posting-id={p.id}
+      className={`card overflow-hidden ${rejected ? "border-dashed bg-surface/70" : ""} ${active ? "ring-2 ring-accent/60 ring-offset-1 ring-offset-canvas" : ""}`}
+    >
       <h3 className="m-0">
         <button
           type="button"
           aria-expanded={open}
           aria-controls={panelId}
-          onClick={() => setOpen((o) => !o)}
+          data-row-toggle={p.id}
+          onClick={toggle}
           className="flex w-full items-start gap-3 rounded-xl p-4 text-left hover:bg-subtle/60 sm:items-center"
         >
           <span className="mt-0.5 shrink-0 sm:mt-0 sm:w-24">
@@ -155,8 +203,13 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
             </span>
             <span className="mt-1.5 flex flex-wrap gap-1 empty:hidden">
               <FilterStateBadge state={p.filter_state} />
-              <UserStatusBadge status={p.user_status} />
+              <UserStatusBadge status={p.user_status} reason={skipReason} />
               <PostingStatusBadge status={p.status} />
+              {p.track === "post_graduation" && (
+                <Badge tone="info" icon="briefcase">
+                  Dopo la laurea
+                </Badge>
+              )}
               {p.has_pack && (
                 <Badge tone="accent" icon="file">
                   Pacchetto pronto
@@ -165,9 +218,21 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
             </span>
           </span>
           <Icon name="chevronDown" size={18} className={`mt-1 shrink-0 text-ink-muted transition-transform sm:mt-0 ${open ? "rotate-180" : ""}`} />
-          <span className="sr-only">{open ? "Comprimi dettagli" : "Espandi dettagli"}</span>
+          <span className="sr-only">
+            {open ? "Comprimi dettagli" : "Espandi dettagli"}
+            {position && `, annuncio ${position.index + 1} di ${position.total}`}
+          </span>
         </button>
       </h3>
+
+      {rejected && (
+        <div className="space-y-3 border-t border-line px-4 pb-4 pt-3">
+          <RejectSummary posting={p} context={context} />
+          <button type="button" className="btn-secondary" aria-keyshortcuts="r" onClick={() => actions.restore(p)}>
+            <Icon name="undo" size={14} /> Ripristina
+          </button>
+        </div>
+      )}
 
       <div id={panelId} hidden={!open} className="border-t border-line px-4 pb-5 pt-4">
         {open && (
@@ -230,45 +295,36 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
               </div>
             )}
 
-            {p.filter_hits.length > 0 && (
+            {p.filter_hits.some((h) => !rejected || h.action !== "reject") && (
               <div>
                 <h4 className="eyebrow mb-2">Regole dei filtri</h4>
                 <ul className="space-y-2">
-                  {p.filter_hits.map((h, i) => (
-                    <li key={i} className="rounded-lg border border-line bg-canvas p-3 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {h.action === "reject" ? (
-                          <Badge tone={h.overridden ? "neutral" : "danger"} icon={h.overridden ? "undo" : "x"}>
-                            {h.overridden ? "Scarto annullato" : "Scarto"}
-                          </Badge>
-                        ) : (
-                          <Badge tone="warning" icon="flag">
-                            Segnalazione
-                          </Badge>
+                  {p.filter_hits
+                    .filter((h) => !rejected || h.action !== "reject")
+                    .map((h, i) => (
+                      <li key={i} className="rounded-lg border border-line bg-canvas p-3 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {h.action === "reject" ? (
+                            <Badge tone={h.overridden ? "neutral" : "danger"} icon={h.overridden ? "undo" : "x"}>
+                              {h.overridden ? "Scarto annullato" : "Scarto"}
+                            </Badge>
+                          ) : (
+                            <Badge tone="warning" icon="flag">
+                              Segnalazione
+                            </Badge>
+                          )}
+                          <span className="font-medium">{ruleLabel(h.rule_id)}</span>
+                          <code className="font-mono text-xs text-ink-muted">{h.rule_id}</code>
+                        </div>
+                        <p className="mt-1.5">{h.reason}</p>
+                        {h.evidence && (
+                          <p className="mt-1.5 text-ink-muted">
+                            <EvidenceSnippet evidence={h.evidence} text={context} />
+                          </p>
                         )}
-                        <code className="font-mono text-xs text-ink-muted">{h.rule_id}</code>
-                      </div>
-                      <p className="mt-1.5">{h.reason}</p>
-                      {h.evidence && (
-                        <blockquote className="mt-1.5 border-l-2 border-line-strong pl-3 text-ink-muted italic">“{h.evidence}”</blockquote>
-                      )}
-                    </li>
-                  ))}
+                      </li>
+                    ))}
                 </ul>
-                {rejected && (
-                  <button
-                    type="button"
-                    className="btn-secondary mt-3"
-                    onClick={() =>
-                      override.mutateAsync(p.id).then(
-                        () => toast.success("Annuncio ripristinato: ora compare tra quelli attivi."),
-                        (e: Error) => toast.error(`Ripristino non riuscito: ${e.message}`),
-                      )
-                    }
-                  >
-                    <Icon name="undo" size={14} /> Ripristina
-                  </button>
-                )}
               </div>
             )}
 
@@ -277,7 +333,7 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
                 Apri annuncio
               </ExternalLink>
               {p.has_pack ? (
-                <Link to={`/annunci/${p.id}/pacchetto`} className="btn-primary">
+                <Link to={`/annunci/${p.id}/pacchetto`} className="btn-primary" aria-keyshortcuts="p">
                   <Icon name="file" size={14} /> Pacchetto candidatura
                 </Link>
               ) : (
@@ -288,10 +344,10 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
                   onClick={() =>
                     generate.mutate(p.id, {
                       onSuccess: () => {
-                        toast.success("Pacchetto generato.");
+                        toast.success("Pacchetto generato: rivedilo prima di usarlo.");
                         navigate(`/annunci/${p.id}/pacchetto`);
                       },
-                      onError: (e) => toast.error(`Generazione non riuscita: ${e.message}`),
+                      onError: (e) => toast.error(`Generazione non riuscita. ${e.message}`),
                     })
                   }
                 >
@@ -300,18 +356,18 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
                 </button>
               )}
               {p.user_status !== "sent" && (
-                <button type="button" className="btn-secondary" onClick={() => setSentOpen(true)}>
+                <button type="button" className="btn-secondary" aria-keyshortcuts="s" onClick={() => actions.markSent(p)}>
                   <Icon name="check" size={14} /> Segna come inviata
                 </button>
               )}
               {p.user_status === "skipped" ? (
-                <button type="button" className="btn-ghost" onClick={() => setUserStatus("todo", "Annuncio rimesso tra quelli da valutare.")}>
+                <button type="button" className="btn-ghost" onClick={() => actions.unskip(p)}>
                   <Icon name="undo" size={14} /> Annulla salto
                 </button>
               ) : (
                 p.user_status === "todo" && (
-                  <button type="button" className="btn-ghost" onClick={() => setUserStatus("skipped", "Annuncio saltato.")}>
-                    <Icon name="skip" size={14} /> Salta
+                  <button type="button" className="btn-ghost" aria-keyshortcuts="x" onClick={() => actions.skip(p)}>
+                    <Icon name="skip" size={14} /> Salta…
                   </button>
                 )
               )}
@@ -330,7 +386,8 @@ export function PostingRow({ posting, defaultOpen = false }: { posting: PostingS
           </div>
         )}
       </div>
-      <MarkSentDialog open={sentOpen} onClose={() => setSentOpen(false)} postingId={p.id} postingTitle={p.title} />
     </li>
   );
 }
+
+const hasEvidence = (p: PostingSummary) => p.filter_hits.some((h) => !!h.evidence);

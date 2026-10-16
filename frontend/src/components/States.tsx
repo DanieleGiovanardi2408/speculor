@@ -56,8 +56,8 @@ export function EmptyState({
   );
 }
 
-export function ErrorState({ error, onRetry, title = "Non è stato possibile caricare i dati" }: { error: unknown; onRetry?: () => void; title?: string }) {
-  const message = error instanceof Error ? error.message : "Errore sconosciuto.";
+export function ErrorState({ error, onRetry, title = "Non riesco a caricare i dati" }: { error: unknown; onRetry?: () => void; title?: string }) {
+  const message = error instanceof Error && error.message ? error.message : "Qualcosa è andato storto. Riprova tra poco.";
   return (
     <div role="alert" className="card flex flex-col items-start gap-3 border-danger/30 p-5 sm:flex-row sm:items-center">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-danger-soft text-danger-ink">
@@ -65,7 +65,7 @@ export function ErrorState({ error, onRetry, title = "Non è stato possibile car
       </span>
       <div className="flex-1">
         <p className="font-medium text-danger-ink">{title}</p>
-        <p className="text-sm text-ink-muted">{message}</p>
+        <p className="text-sm text-ink-muted">{renderCode(message)}</p>
       </div>
       {onRetry && (
         <button type="button" className="btn-secondary" onClick={onRetry}>
@@ -86,5 +86,18 @@ export function Notice({ tone = "info", title, children, icon }: { tone?: "info"
         <div className={title ? "mt-0.5" : ""}>{children}</div>
       </div>
     </div>
+  );
+}
+
+/** Renders `backticked` parts of a message as code. */
+function renderCode(text: string) {
+  return text.split(/(`[^`]+`)/).map((part, i) =>
+    part.startsWith("`") && part.endsWith("`") ? (
+      <code key={i} className="rounded bg-subtle px-1 font-mono text-ink">
+        {part.slice(1, -1)}
+      </code>
+    ) : (
+      part
+    ),
   );
 }
