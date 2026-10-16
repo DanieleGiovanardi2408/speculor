@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine
+from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from radar import models
@@ -20,6 +22,13 @@ def get_engine(url: str | None = None) -> Engine:
     if url.startswith("sqlite:///"):
         Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
         return create_engine(url, connect_args={"check_same_thread": False})
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    if os.environ.get("VERCEL") or ":6543/" in url:
+        # Serverless / Supabase transaction pooler: no client-side pool, no prepared statements.
+        return create_engine(url, poolclass=NullPool, connect_args={"prepare_threshold": None})
     return create_engine(url, pool_pre_ping=True)
 
 

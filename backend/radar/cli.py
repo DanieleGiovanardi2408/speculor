@@ -13,10 +13,12 @@ from radar.config import REPO_ROOT, get_settings
 app = typer.Typer(
     no_args_is_help=True, add_completion=False, help="Radar: internship hunting, human in the loop."
 )
+db_app = typer.Typer(no_args_is_help=True, help="Database utilities.")
 config_app = typer.Typer(
     no_args_is_help=True, help="Store gitignored config files in the database."
 )
 app.add_typer(config_app, name="config")
+app.add_typer(db_app, name="db")
 console = Console()
 
 
@@ -149,6 +151,32 @@ def send(
     result = send_approved(dry_run=dry_run)
     if result.get("stopped") in {"unauthenticated", "quota"}:
         raise typer.Exit(1)
+
+
+@db_app.command("copy")
+def db_copy(
+    source: Annotated[str, typer.Option(help="Source database URL")],
+    target: Annotated[str, typer.Option(help="Target database URL")],
+    replace: Annotated[bool, typer.Option(help="Delete target rows first")] = False,
+) -> None:
+    """Copy all tables (e.g. local SQLite -> Supabase). Prints row counts only."""
+    from sqlalchemy import create_engine
+
+    from radar.db import get_engine
+    from radar.dbcopy import copy_database
+
+    counts = copy_database(create_engine(source), get_engine(target), replace=replace)
+    console.print({k: v for k, v in counts.items() if v})
+
+
+@db_app.command("secure")
+def db_secure() -> None:
+    """Enable row level security on every table of RADAR_DATABASE_URL (Supabase)."""
+    from radar.db import get_engine
+    from radar.dbcopy import enable_rls
+
+    names = enable_rls(get_engine())
+    console.print(f"RLS enabled on {len(names)} tables")
 
 
 @config_app.command("push")
