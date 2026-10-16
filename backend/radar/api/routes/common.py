@@ -168,6 +168,7 @@ def _summary_fields(
             for h in hits
         ],
         "has_pack": has_pack,
+        "similarity": p.similarity,
         "skip_reason": split_skip(p.note)[0],
     }
 
@@ -236,6 +237,11 @@ def sort_summaries(
         )
     if sort == "company":
         return sorted(items, key=lambda s: (s.company_name.lower(), s.title.lower(), s.id))
+    if sort == "similarity":
+        return sorted(
+            items,
+            key=lambda s: (s.similarity is None, -(s.similarity or 0.0), *by_priority(s)),
+        )
     if sort == "first_seen":
         return sorted(items, key=lambda s: (s.first_seen, s.id), reverse=True)
     return sorted(items, key=by_priority)

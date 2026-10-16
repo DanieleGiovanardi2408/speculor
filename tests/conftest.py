@@ -20,3 +20,12 @@ def engine(tmp_path) -> Engine:  # type: ignore[no-untyped-def]
 def session(engine: Engine) -> Iterator[Session]:
     with Session(engine) as s:
         yield s
+
+
+@pytest.fixture(autouse=True)
+def _no_real_embedder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never load the real embedding model in tests (even when the `embed` extra is installed);
+    tests that need ranking inject a fake embedder."""
+    from radar.pipeline import rank
+
+    monkeypatch.setattr(rank, "load_default_embedder", lambda: None)

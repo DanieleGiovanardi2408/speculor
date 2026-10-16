@@ -20,6 +20,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - LLM scoring (Groq by default, Anthropic as a one-line switch, offline `fake` provider for
   demo/tests); deterministic "Bassa" for off-target titles without an LLM call, target roles
   first, cache by content hash, resume after free-tier daily limits.
+- Optional local pre-ranking (`embed` extra, sentence-transformers
+  `paraphrase-multilingual-MiniLM-L12-v2`): `postings.similarity` to the fact bank and target
+  roles, embeddings cached by content hash, LLM scoring budget spent on the closest postings
+  first, *Affinità* badge and sort in the web app, `radar rank` and `radar run --no-rank`.
 - Application packs (cover letter, form answers) and outreach drafts, with writing rules
   enforced in code.
 - FastAPI backend and Italian React web app (*Oggi*, *Annunci*, *Pacchetto*, *Approvazioni*,

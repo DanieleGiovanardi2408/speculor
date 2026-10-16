@@ -60,6 +60,10 @@ flowchart LR
   Clearly off-target titles (tax, payroll, sales, legal, HR, ...) get "Bassa" without an LLM
   call, target roles are scored first, scores are cached by content hash, and a run that hits
   the free-tier daily limit resumes the next day.
+- **Local pre-ranking** (optional, free): with the `embed` extra (`uv sync --extra embed`), a
+  small multilingual embedding model on the Mac computes each posting's similarity to the fact
+  bank and target roles; the LLM budget (`--max-score`, default 60) goes to the closest postings
+  first and the web app shows and sorts by *Affinità*. `radar rank` refreshes it on its own.
 - **Packs**: cover letter (at most 250 words, opening with the availability line), form answers
   and outreach drafts. Writing rules are enforced in code (no em dashes, no cliches, length
   limits, `[CHECK: ...]` markers for anything the user must verify).

@@ -195,7 +195,14 @@ def pack_candidates(session: Session, limit: int, posting_id: int | None = None)
         if pack is not None and pack.content_hash == p.content_hash:
             continue
         out.append(p)
-    out.sort(key=lambda p: (p.deadline is None, p.deadline or date.max, -p.first_seen.timestamp()))
+    out.sort(
+        key=lambda p: (
+            p.deadline is None,
+            p.deadline or date.max,
+            -(p.similarity or 0.0),
+            -p.first_seen.timestamp(),
+        )
+    )
     return out[:limit]
 
 

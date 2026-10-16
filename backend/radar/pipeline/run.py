@@ -1,4 +1,5 @@
-"""The daily pipeline: collect -> store/dedupe -> closed checks -> filters -> diff -> LLM -> report.
+"""The daily pipeline: collect -> store/dedupe -> closed checks -> filters -> diff -> rank -> LLM
+-> report.
 
 One failing source never stops the run. Console output and stats contain counts and error
 types only (no company names, no titles); the Markdown report is private and detailed.
@@ -32,6 +33,7 @@ from radar.pipeline.closed import (
 )
 from radar.pipeline.diff import Diff, diff_for_run
 from radar.pipeline.filters import Rules, apply_filters, apply_filters_all, load_rules
+from radar.pipeline.rank import Embedder, rank_postings
 from radar.pipeline.report import write_report
 from radar.pipeline.store import company_index, upsert_raw
 from radar.timeutil import utcnow
@@ -48,6 +50,7 @@ class PipelineOptions:
     max_packs: int = 5
     check_closed: bool = True
     check_cap: int = DEFAULT_CHECK_CAP
+    rank: bool = True  # local embedding similarity before the LLM (needs the `embed` extra)
 
 
 @dataclass
@@ -80,6 +83,7 @@ def _empty_stats() -> dict[str, Any]:
         "closed_by_absence": 0,
         "closed_by_check": {},
         "filtered": 0,
+        "rank": {},
         "llm": {},
         "errors": [],
     }
@@ -212,6 +216,14 @@ def _run_filters(
     session.commit()
 
 
+def _run_rank(session: Session, stats: dict[str, Any], embedder: Embedder | None) -> None:
+    try:
+        stats["rank"] = rank_postings(session, embedder)
+    except Exception as exc:
+        session.rollback()
+        stats["errors"].append({"source": "rank", "error": error_label(exc)})
+
+
 def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[str, Any]) -> None:
     llm: dict[str, Any] = {}
     stats["llm"] = llm
@@ -266,9 +278,11 @@ def run_pipeline(
     today: date | None = None,
     reports_dir: Path | None = None,
     now: datetime | None = None,
+    embedder: Embedder | None = None,
 ) -> PipelineResult:
-    """Run the whole pipeline. ``connectors``/``engine``/``checker``/``rules`` are injectable
-    for tests; by default they come from config, the database settings and the network."""
+    """Run the whole pipeline. ``connectors``/``engine``/``checker``/``rules``/``embedder`` are
+    injectable for tests; by default they come from config, the database settings and the
+    network."""
     engine = init_db(engine)
     now = now or utcnow()
     stats = _empty_stats()
@@ -324,6 +338,8 @@ def run_pipeline(
             failed = True
             stats["errors"].append({"source": "pipeline", "error": error_label(exc)})
 
+        if opts.rank and not failed:
+            _run_rank(session, stats, embedder)
         if opts.llm and not failed:
             _run_llm(session, run_id, opts, stats)
 

@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 
+    # Local pre-ranking (optional `embed` extra)
+    embed_model: str = Field(
+        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        validation_alias="RADAR_EMBED_MODEL",
+    )
+
     # Collection
     user_agent: str = Field(
         default="speculor-radar/0.1 (personal job-search tool; "

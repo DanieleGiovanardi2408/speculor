@@ -88,6 +88,9 @@ class Posting(SQLModel, table=True):
     filter_state: str = Field(default="pass", index=True)
     user_status: str = Field(default="todo", index=True)
     note: str | None = Field(default=None, sa_column=Column(Text))
+    # Local embedding similarity to the profile (pipeline/rank.py), 0..1; None if not ranked.
+    similarity: float | None = None
+    similarity_version: str | None = None  # model + profile chunks hash it was computed with
 
 
 class ChangeEvent(SQLModel, table=True):
