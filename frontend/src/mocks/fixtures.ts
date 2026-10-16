@@ -12,6 +12,7 @@ import type {
   ScoreOut,
   SettingsOut,
   Stage,
+  Verification,
 } from "../api/types";
 
 const DAY = 86_400_000;
@@ -323,7 +324,40 @@ const draftBase = {
   send_result: null,
   sent_at: null,
   style_issues: [] as string[],
+  verification: null,
+  verification_stale: false,
 };
+
+/** Mock fact check: one claim per sentence of the letter, numbers marked as unsupported. */
+export function mockVerification(text: string): Verification {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/).filter((s) => /\b(ho|sono|mi|I|my)\b/i.test(s));
+  const claims = sentences.map((claim, i) => {
+    const unsupported = /\d/.test(claim) && !/2027/.test(claim);
+    return {
+      text_id: "cover_letter",
+      claim: claim.trim(),
+      fact_id: unsupported ? null : `experience.demo.did.${i}`,
+      verdict: unsupported ? "unsupported" : "supported",
+      source: unsupported ? "precheck" : "llm",
+      reason: unsupported ? "numero non presente nei fatti" : null,
+    };
+  });
+  const n = (v: string) => claims.filter((c) => c.verdict === v).length;
+  return {
+    version: 1,
+    status: "ok",
+    verified_at: isoTs(0, 7),
+    provider: "mock",
+    model: "mock-model",
+    error: null,
+    facts_source: "facts.example.yaml",
+    facts_version: "2026-10-01",
+    texts_hash: "mock",
+    counts: { supported: n("supported"), unsupported: n("unsupported"), check: n("check"), total: claims.length },
+    claims,
+    drafter_claims: [],
+  };
+}
 
 export const draftsSeed: Draft[] = [
   {
@@ -428,6 +462,40 @@ export const packsSeed: Omit<Pack, "posting" | "contacts" | "drafts">[] = [
     apply_link: "https://jobs.example.com/nebbia-labs/101/apply",
     language: "it",
     style_issues: ["Il secondo paragrafo è lungo: valuta di dividerlo."],
+    verification: {
+      version: 1,
+      status: "ok",
+      verified_at: isoTs(0, 6),
+      provider: "mock",
+      model: "mock-model",
+      error: null,
+      facts_source: "facts.example.yaml",
+      facts_version: "2026-10-01",
+      texts_hash: "mock",
+      counts: { supported: 2, unsupported: 1, check: 1, total: 4 },
+      claims: [
+        {
+          text_id: "cover_letter",
+          claim: "Nel tirocinio precedente ho automatizzato un report settimanale: la preparazione è passata da un giorno a un'ora.",
+          fact_id: null,
+          verdict: "unsupported",
+          source: "llm",
+          reason: "nessun fatto sul tempo di preparazione",
+        },
+        { text_id: "form_answers.1", claim: "[CHECK: motivo specifico]", fact_id: null, verdict: "check", source: "llm", reason: null },
+        {
+          text_id: "cover_letter",
+          claim: "Disponibile full-time da febbraio-aprile 2027.",
+          fact_id: "meta.decisions.availability_it",
+          verdict: "supported",
+          source: "llm",
+          reason: null,
+        },
+        { text_id: "cover_letter", claim: "Parlo italiano e inglese in modo fluente.", fact_id: "identity.languages.english", verdict: "supported", source: "llm", reason: null },
+      ],
+      drafter_claims: [],
+    },
+    verification_stale: false,
     provider: "mock",
     model: "mock-model",
     updated_at: isoTs(0, 6),
@@ -441,6 +509,8 @@ export const packsSeed: Omit<Pack, "posting" | "contacts" | "drafts">[] = [
     apply_link: "https://jobs.example.com/acquaviva-energia/112/apply",
     language: "en",
     style_issues: [],
+    verification: null,
+    verification_stale: false,
     provider: "mock",
     model: "mock-model",
     updated_at: isoTs(-1, 6),

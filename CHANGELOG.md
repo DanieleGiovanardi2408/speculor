@@ -22,6 +22,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   first, cache by content hash, resume after free-tier daily limits.
 - Application packs (cover letter, form answers) and outreach drafts, with writing rules
   enforced in code.
+- Fact bank (`config/facts.yaml`, fictional `config/facts.example.yaml`): the only source of
+  candidate facts for packs and drafts, rendered as `[id] text` lines; a verification pass (a
+  deterministic pre-check plus a second LLM call) maps every claim to a fact id and marks
+  unsupported ones, shown in the *Verifica fatti* panel; `POST /api/packs/{id}/verify`,
+  `radar packs verify`, `radar packs regenerate`, `radar facts check`.
 - FastAPI backend and Italian React web app (*Oggi*, *Annunci*, *Pacchetto*, *Approvazioni*,
   *Candidature*, *Aziende*, *Impostazioni*, *Esecuzioni*), keyboard shortcuts, axe-clean at
   WCAG 2.1 AA.

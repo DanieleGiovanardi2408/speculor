@@ -98,6 +98,10 @@ make schedule-install   # from now on, every morning at 07:00
 - `config/profile.example.yaml`, `config/companies.example.yaml`, `config/rules.example.yaml`:
   copy each to `config/<name>.yaml` and edit (profile and preferences, target companies with
   their ATS, deterministic filter rules). The real files are gitignored.
+- `config/facts.example.yaml`: copy to `config/facts.yaml` (gitignored). The fact bank is the
+  **only** source of facts for every draft: anything else becomes a `[CHECK: ...]` marker, and a
+  second LLM call checks every claim against it (*Verifica fatti* in *Pacchetto*). The profile
+  is used only for scoring. Validate it with `uv run radar facts check`.
 - `.env.example`: copy to `.env` (gitignored). Every variable is documented there: database URL,
   LLM providers and models, API keys, user agent, cache TTL, IMAP mailbox, linkedin-cli path.
 - **LLM**: Groq free tier by default (`openai/gpt-oss-20b` for scoring, `openai/gpt-oss-120b`
