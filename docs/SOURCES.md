@@ -229,7 +229,6 @@ time; that board is then reported and skipped.
   access is ever granted.
 - LinkedIn postings can still be added by hand (see Manual add); they are stored from the URL only.
 
-## Email alerts (IMAP) (`email_alerts.py`, `imap_auth.py`, `email_parsers/`)
 ## LinkedIn saved searches (`linkedin_jobs.py`)
 
 Source `linkedin_jobs`. The user's own job searches, run with the user's own LinkedIn session

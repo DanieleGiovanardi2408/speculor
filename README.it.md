@@ -32,11 +32,13 @@ Tutti gli screenshot usano i dati demo inventati (`make dev`).
 ```mermaid
 flowchart LR
     LD(["launchd<br/>ogni giorno 07:00"]) -.-> S
-    S["Fonti<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>alert e-mail (IMAP) · URL a mano"] --> N["Normalizza<br/>+ deduplica"]
-    N --> F["Filtri rigidi<br/>rules.yaml<br/>+ percorso dopo la laurea"]
-    F --> L["Pertinenza<br/>+ punteggio LLM"]
-    L --> P["Pacchetti + bozze"]
-    P --> DB[("SQLite<br/>(o Postgres)")]
+    S["Fonti<br/>board ATS (9 tipi)<br/>ricerche salvate LinkedIn · JobTeaser<br/>alert e-mail (IMAP) · URL a mano"] --> N["Normalizza<br/>+ deduplica tra fonti"]
+    N --> F["Filtri rigidi<br/>rules.yaml · rilevamento lingua<br/>+ percorso dopo la laurea"]
+    F --> E["Pre-ranking locale<br/>con embedding"]
+    E --> L["Tetti di pertinenza<br/>+ punteggio LLM (top 60)"]
+    L --> P["Pacchetti + bozze<br/>dalla fact bank<br/>+ verifica fatti"]
+    P --> C["Contatti pubblici<br/>(con tetto)"]
+    C --> DB[("SQLite<br/>(o Postgres)")]
     DB <--> W["Web app locale"]
     W -->|"l'utente approva"| DB
     DB --> SEND["radar send<br/>(locale, conferma ognuno)"]
@@ -44,19 +46,29 @@ flowchart LR
 ```
 
 - **Fonti**: API e feed pubblici degli ATS (Greenhouse, Lever, Ashby, Workday, Personio,
-  Workable, Teamtailor, Recruitee, inRecruiting) per una lista di
-  aziende scelta dall'utente, alert e-mail di LinkedIn e JobTeaser via IMAP in sola lettura
-  (opzionale), URL aggiunti a mano. Dettagli in [docs/SOURCES.md](docs/SOURCES.md).
+  Workable, Teamtailor, Recruitee, inRecruiting) per una lista di aziende scelta dall'utente,
+  divisa per settore; facoltativi: le ricerche salvate LinkedIn dell'utente (con linkedin-cli),
+  il Career Service JobTeaser (profilo browser locale), gli alert e-mail di LinkedIn e JobTeaser
+  via IMAP in sola lettura; e gli URL aggiunti a mano. Lo stesso annuncio visto su più fonti è
+  un solo annuncio con tutte le fonti elencate. Dettagli in [docs/SOURCES.md](docs/SOURCES.md).
 - **Filtri**: regole deterministiche in `config/rules.yaml` (finestra di inizio, anno di laurea,
   solo PhD, anni di esperienza, sede, visto, lingue richieste, convenzione di tirocinio). I
   graduate programme e i ruoli full-time che iniziano dopo la laurea finiscono nella vista
   *Dopo la laurea*. Ogni scarto salva regola e testo; si ripristina con un clic (con annulla).
+  Il rilevamento locale della lingua segnala *lingua probabilmente richiesta* quando la
+  descrizione è soprattutto in francese, tedesco, spagnolo o olandese.
+- **Pre-ranking locale** (facoltativo, gratuito): con l'extra `embed` un piccolo modello di
+  embedding multilingue sul Mac calcola l'*Affinità* di ogni annuncio con la fact bank e i ruoli
+  target; il budget LLM (60 al giorno di default) va prima agli annunci più vicini.
 - **Punteggio**: un LLM assegna Alta / Media / Bassa con le motivazioni. I titoli fuori target
-  (tax, payroll, sales, legal, HR, ...) prendono "Bassa" senza chiamare l'LLM; cache per hash del
+  (tax, payroll, sales, legal, HR, ...) prendono "Bassa" senza chiamare l'LLM; ogni flag dei
+  filtri arriva all'LLM come fatto; una lingua richiesta che l'utente non parla non è mai Alta,
+  e i ruoli generici di software, QA e vendite sono al massimo Media; cache per hash del
   contenuto; dopo il limite giornaliero gratuito si riprende il giorno dopo.
 - **Pacchetti**: lettera (massimo 250 parole, prima riga "Disponibile full-time da febbraio 2027,
   con inizio flessibile fino ad aprile 2027."), risposte ai form e bozze di messaggi, con regole
-  di scrittura verificate nel codice.
+  di scrittura verificate nel codice. Ogni fatto viene dalla fact bank (`config/facts.yaml`):
+  il resto diventa `[CHECK: ...]` e la *Verifica fatti* segnala le affermazioni non supportate.
 
 Dettagli in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -111,33 +123,52 @@ Dettagli in [docs/RUNNING.md](docs/RUNNING.md).
 
 ## Limiti ed etica
 
-- **Raccolta educata**: user agent onesto, rate limit per host (almeno 1 s, 2 s per Workday),
-  cache su disco, back-off che rispetta `Retry-After`.
-- **robots.txt rispettato anche quando costa risultati**: LinkedIn vieta `/jobs-guest/` ai
-  crawler non autorizzati, quindi il connettore LinkedIn lo segnala e non scarica nulla;
-  l'API di SmartRecruiters vieta gli agenti generici, quindi quel connettore è disattivato.
-- **Nessuno scraping con login**, nessuna elusione di CAPTCHA o anti-bot, nessun cookie tranne la
-  sessione linkedin-cli dell'utente sul suo Mac. I Termini di LinkedIn limitano l'accesso
-  automatico: Radar non fa scraping di LinkedIn; l'invio con linkedin-cli è locale, confermato
-  messaggio per messaggio e sotto la responsabilità dell'utente.
-- **IMAP**: legge solo una cartella/etichetta (`radar`, impostata con `RADAR_IMAP_FOLDER`) di una
-  casella Gmail o Outlook.com, in sola lettura (`EXAMINE`, `BODY.PEEK`): niente viene segnato come
-  letto, spostato, cancellato o contrassegnato (il client IMAP rifiuta quei comandi). Solo gli
-  alert di LinkedIn e JobTeaser vengono scaricati e letti; il resto è ignorato e non arriva mai
-  all'LLM. Il contenuto delle e-mail non finisce mai nei log; le credenziali (password per app
-  Gmail o token OAuth2 Outlook da `radar imap login`) stanno nel portachiavi macOS o nel `.env`
-  locale. Configurazione: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
-  automatico: Radar non fa crawling di LinkedIn. Facoltativo (spento finché non esiste
-  `config/linkedin_searches.yaml`): le ricerche salvate dell'utente passano da linkedin-cli una
-  volta al giorno, una chiamata alla volta, al massimo 25, senza mai ritentare dopo checkpoint,
-  captcha, 429 o 999 (la fonte va in pausa e *Oggi* mostra cosa fare). L'invio con linkedin-cli
-  è locale, confermato messaggio per messaggio. Entrambi sotto la responsabilità dell'utente.
-- **IMAP**: legge solo un'etichetta Gmail (`radar`, impostata con `RADAR_IMAP_FOLDER`) in sola lettura (`EXAMINE`,
-  `BODY.PEEK`): niente viene segnato come letto, spostato, cancellato o contrassegnato. Solo gli
-  alert di LinkedIn e JobTeaser vengono letti; il resto è ignorato e non arriva mai all'LLM. Il
-  contenuto delle e-mail non finisce mai nei log; le credenziali stanno solo nel `.env` locale.
-- **LLM**: il testo degli annunci e il profilo dell'utente vanno al provider LLM configurato.
-- **GitHub** ospita solo il codice ed esegue la CI, senza segreti e senza dati reali.
+Radar è uno strumento personale. Tutto gira sul Mac dell'utente, dal job launchd, una richiesta
+alla volta; niente gira nel cloud e la CI non tocca mai dati reali, sessioni o chiavi.
+
+**Cosa viene letto, e con che ritmo**
+
+| Fonte | Cosa | Ritmo |
+|---|---|---|
+| Board ATS (Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting) | API e feed pubblici delle aziende scelte dall'utente | una volta al giorno, almeno 1 s per host (2 s su Workday), cache HTTP di 12 h |
+| Ricerche salvate LinkedIn (facoltative) | Le ricerche di lavoro dell'utente, tramite linkedin-cli e la sua sessione | una volta al giorno, in sequenza, al massimo 25 chiamate (linkedin-cli limita le chiamate jobs a 30 al giorno) |
+| JobTeaser (facoltativo) | Le offerte del Career Service Luiss, da un profilo browser locale in cui l'utente accede a mano | una volta al giorno, una pagina alla volta, 3-6 s tra le pagine, al massimo 40 offerte |
+| Alert e-mail (facoltativi) | Gli alert di LinkedIn e JobTeaser in una cartella/etichetta `radar` | una volta al giorno, in sola lettura |
+| Contatti (facoltativi) | Risultati di ricerca pubblici per 2-3 persone per annuncio Alta (ricerca web di Groq) | al massimo 5 annunci e 10 chiamate al giorno, tetto rigido di 5 euro al mese |
+
+**Regole imposte nel codice**
+
+- **Niente viene mai inviato o candidato in automatico.** Le candidature le invia sempre
+  l'utente; i messaggi LinkedIn partono solo con `radar send`, uno alla volta, dopo una `s`
+  esplicita.
+- **robots.txt rispettato anche quando costa risultati** (regole con wildcard comprese). Le
+  pagine guest di LinkedIn, l'API di SmartRecruiters, molti feed Personio e le liste di offerte
+  di JobTeaser sono vietati, quindi Radar non li legge. Dettagli in [docs/SOURCES.md](docs/SOURCES.md).
+- **Nessuna risoluzione di CAPTCHA, nessuna elusione anti-bot**: niente proxy, niente trucchi
+  sul fingerprint, niente parallelismo, user agent onesto. Un checkpoint, un captcha, un HTTP
+  429/999 o una sessione scaduta **mettono in pausa** subito quella fonte, senza ritentare;
+  *Oggi* mostra la pausa e cosa fare, e la fonte resta ferma finché l'utente non la riprende.
+  Una fonte che fallisce non ferma mai le altre.
+- **Le sessioni restano locali**: la sessione linkedin-cli e il profilo browser di JobTeaser
+  stanno solo sul Mac dell'utente; i cookie non vengono mai letti, esportati o scritti nei log.
+- **E-mail**: una sola cartella/etichetta, aperta con `EXAMINE` e letta con `BODY.PEEK` (il
+  client rifiuta qualsiasi comando che segni, sposti o cancelli). Vengono scaricati solo gli
+  alert di LinkedIn e JobTeaser; ogni altro messaggio è ignorato, mai scritto nei log e mai
+  inviato all'LLM. Le credenziali (password per app Gmail o token OAuth2 Outlook) stanno nel
+  portachiavi macOS o nel `.env` locale.
+- **Fatti, non abbellimenti**: le bozze possono dichiarare solo fatti della fact bank
+  dell'utente (`config/facts.yaml`); tutto il resto diventa `[CHECK: ...]`, e una seconda
+  chiamata LLM più un controllo deterministico segnalano in *Pacchetto* ogni affermazione non
+  supportata.
+- **Contatti**: solo risultati di ricerca pubblici, mai un login su LinkedIn. Un contatto resta
+  solo se il suo URL compare nei risultati, e Radar salva solo nome, ruolo, URL pubblico e una
+  riga di motivazione, segnato *da verificare*.
+- **Dati all'LLM**: il testo degli annunci e i fatti pertinenti vanno al provider LLM configurato
+  (Groq di default). Il provider `fake` tiene tutto offline; gli embedding sono calcolati in
+  locale.
+- **Log**: solo conteggi, mai nomi, titoli, contenuti e-mail o chiavi.
+- I Termini di LinkedIn limitano l'accesso automatico; le funzioni LinkedIn facoltative usano la
+  sessione dell'utente a ritmo umano e sono sotto la sua responsabilità.
 
 ## Postgres in self-hosting (opzionale)
 

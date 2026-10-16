@@ -37,27 +37,36 @@ All screenshots use the fictional demo data (`make dev`). Every page also works 
 ```mermaid
 flowchart LR
     LD(["launchd<br/>07:00 daily"]) -.-> S
-    S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
-    N --> F["Hard filters<br/>rules.yaml<br/>+ post-graduation track"]
-    F --> L["Relevance check<br/>+ LLM scorer"]
-    L --> P["Packs + drafts"]
-    P --> DB[("SQLite<br/>(or Postgres)")]
+    S["Sources<br/>ATS boards (9 types)<br/>LinkedIn saved searches · JobTeaser<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ cross-source dedupe"]
+    N --> F["Hard filters<br/>rules.yaml · language detection<br/>+ post-graduation track"]
+    F --> E["Local embedding<br/>pre-ranking"]
+    E --> L["Relevance caps<br/>+ LLM scorer (top 60)"]
+    L --> P["Packs + drafts<br/>from the fact bank<br/>+ fact check"]
+    P --> C["Public contacts<br/>(capped)"]
+    C --> DB
+    DB[("SQLite<br/>(or Postgres)")]
     DB <--> W["Local web app"]
     W -->|"user approves"| DB
     DB --> SEND["radar send<br/>(local, confirm each)"]
     SEND --> LI["linkedin-cli"]
 ```
 
-- **Sources**: public ATS job APIs and feeds (Greenhouse, Lever, Ashby, Workday, Personio, Workable,
-  Teamtailor, Recruitee, inRecruiting) for a user-curated list
-  of companies, optional LinkedIn and JobTeaser alert emails over read-only IMAP, and URLs added
-  by hand. Details per connector in [docs/SOURCES.md](docs/SOURCES.md).
+- **Sources**: public ATS job APIs and feeds (Greenhouse, Lever, Ashby, Workday, Personio,
+  Workable, Teamtailor, Recruitee, inRecruiting) for a user-curated list of companies, tagged by
+  sector; optionally the user's own LinkedIn saved searches (through linkedin-cli), the JobTeaser
+  career service (a local browser profile), LinkedIn and JobTeaser alert emails over read-only
+  IMAP; and URLs added by hand. The same job from several sources is one posting with all its
+  sources listed. Details per connector in [docs/SOURCES.md](docs/SOURCES.md).
 - **Filters**: deterministic rules in `config/rules.yaml` (start window, graduation year,
   PhD-only, years of experience, location, visa, required languages, enrollment-agreement
-  flags). Graduate programmes and full-time roles that start after graduation are not dropped:
+  flags), plus local language detection: a description mostly in French, German, Spanish or
+  Dutch is flagged *lingua probabilmente richiesta*. Graduate programmes and full-time roles that start after graduation are not dropped:
   they go to a separate *Dopo la laurea* (post-graduation) view. Every hit stores the rule and the
   text that triggered it, and any posting can be restored with one click (with undo).
-- **Scoring**: an LLM rates each remaining posting Alta / Media / Bassa and explains why.
+- **Scoring**: an LLM rates each remaining posting Alta / Media / Bassa and explains why. Every
+  filter flag is passed to it as a fact, and deterministic caps apply afterwards: a required
+  language the user does not speak is never Alta, and generic software, QA and sales roles are
+  Media at most.
   Clearly off-target titles (tax, payroll, sales, legal, HR, ...) get "Bassa" without an LLM
   call, target roles are scored first, scores are cached by content hash, and a run that hits
   the free-tier daily limit resumes the next day.
@@ -140,7 +149,7 @@ Local only (`make dev-real`), in Italian:
 |---|---|
 | *Oggi* | Today's action list: deadlines in the next 7 days, new Alta postings, packs to review, follow-ups, drafts, weekly goal; last run card with LLM usage; a banner for paused sources with what to do and *Riprendi* |
 | *Annunci* | Postings in three tabs: *Stage* \| *Dopo la laurea* \| *Scartati*. Keyboard: `j`/`k` move, `Enter` open details, `p` pack, `s` mark as sent, `x` skip with a reason, `r` restore, `/` search, `?` help (plus `g o` / `g a` / `g p` to jump between pages) |
-| *Pacchetto* | Application pack: cover letter, form answers, contacts and drafts, all editable |
+| *Pacchetto* | Application pack: cover letter, form answers, contacts and drafts, all editable; *Verifica fatti* lists every claim with its fact id or "non supportato"; *Cerca contatti* finds public profiles |
 | *Approvazioni* | Approve or skip outreach drafts |
 | *Candidature* | Applications tracker with stages and follow-ups |
 | *Aziende* | Target companies and their boards |
@@ -167,50 +176,48 @@ in CI.
 
 ## Limits and ethics
 
-Radar is a personal tool that reads a small amount of public data, politely:
+Radar is a personal tool. Everything runs on the user's Mac from the launchd job, one request at
+a time; nothing runs in the cloud, and CI never touches real data, sessions or keys.
 
-- **Polite collection**: an honest user agent with a link to this repository, per-host rate
-  limits (at least 1 s, 2 s for Workday hosts), an on-disk HTTP cache (default 12 h), exponential
-  back-off honouring `Retry-After` on 429/403/5xx, and a hard stop after repeated failures.
-- **robots.txt is respected, even when it costs results.** LinkedIn's robots.txt disallows
-  `/jobs-guest/` for every crawler that is not explicitly whitelisted, so the LinkedIn guest
-  connector checks it, reports "disallowed by robots.txt" and fetches nothing. The
-  SmartRecruiters posting API's robots.txt disallows generic agents, so that connector is kept
-  but disabled. Workday boards are called only if robots.txt allows `/wday/cxs/`. Details in
-  [docs/SOURCES.md](docs/SOURCES.md).
-- **No logged-in scraping**, no CAPTCHA solving, no proxy rotation or fingerprint evasion. No
-  cookies anywhere, except the user's own linkedin-cli session on the user's Mac. When a source
-  blocks Radar, the run records the failure and moves on.
-- **LinkedIn**: LinkedIn's User Agreement restricts automated access. Radar does not scrape
-  LinkedIn; LinkedIn postings arrive through LinkedIn's own alert emails or *Aggiungi da URL*.
-  Sending through linkedin-cli uses the user's own session, runs only locally and only after an
-  explicit confirmation of each message; it is the user's own responsibility.
-- **Email alerts (IMAP)**: optional. Radar reads only one folder/label (`radar`, set with
-  `RADAR_IMAP_FOLDER`) of a Gmail or Outlook.com mailbox, opens it read-only (`EXAMINE`) and
-  fetches with `BODY.PEEK`, so nothing is marked as read, moved, deleted or flagged (the IMAP
-  client refuses those commands). Only LinkedIn and JobTeaser alert senders are downloaded and
-  parsed; every other message is ignored and never sent to the LLM. Email content is never
-  logged. Credentials (a Gmail app password, or an Outlook OAuth2 token from `radar imap login`)
-  live in the macOS keychain or the local `.env`. Setup: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
-  blocks Radar, the run records the failure and moves on; a source that needs the user (LinkedIn
-  checkpoint, expired session) is paused and shown on *Oggi* until the user resumes it.
-- **LinkedIn**: LinkedIn's User Agreement restricts automated access. Radar does not crawl
-  LinkedIn; postings arrive through LinkedIn's own alert emails, *Aggiungi da URL*, and
-  (optional, off unless `config/linkedin_searches.yaml` exists) the user's own saved job
-  searches run through linkedin-cli: once a day, one call at a time, at most 25 calls, never
-  retried after a checkpoint, captcha, 429 or 999. Sending through linkedin-cli uses the user's
-  own session, runs only locally and only after an explicit confirmation of each message. Both
-  are the user's own responsibility.
-- **Email alerts (IMAP)**: optional. Radar reads only one Gmail label (`radar`, set with `RADAR_IMAP_FOLDER`), opens
-  it read-only (`EXAMINE`) and fetches with `BODY.PEEK`, so nothing is marked as read, moved,
-  deleted or flagged. Only LinkedIn and JobTeaser alert senders are parsed; every other message
-  is ignored and never sent to the LLM. Email content is never logged, and the credentials (a
-  Gmail app password) live only in the local `.env`.
-- **LLM data**: posting text and the user's profile are sent to the configured LLM provider (Groq
-  by default) for scoring and drafting. From email, only the content of alert-sender messages is
-  used. Use the `fake` provider to keep everything offline.
-- **GitHub** only hosts the code and runs CI (ruff, mypy, pytest, frontend lint, typecheck, tests
-  and build, gitleaks) with no secrets and no real data.
+**What is read, and at what pace**
+
+| Source | What | Pace |
+|---|---|---|
+| ATS boards (Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting) | Public job APIs and feeds of a user-curated company list | once a day, at least 1 s per host (2 s on Workday), 12 h HTTP cache |
+| LinkedIn saved searches (optional) | The user's own job searches through linkedin-cli and the user's own session | once a day, sequential, at most 25 calls (linkedin-cli caps job calls at 30/day) |
+| JobTeaser (optional) | The Luiss career-service offers, through a dedicated local browser profile the user logs into by hand | once a day, one page at a time, 3 to 6 s between pages, at most 40 offer pages |
+| Email alerts (optional) | LinkedIn and JobTeaser alert emails in one `radar` folder/label | once a day, read-only |
+| Contacts (optional) | Public search results for 2 or 3 people per Alta posting (Groq web search) | at most 5 postings and 10 calls a day, hard cap 5 EUR a month |
+
+**Rules enforced in code**
+
+- **Nothing is ever submitted or sent automatically.** Applications are always submitted by the
+  user; LinkedIn messages leave only through `radar send`, one by one, after an explicit `s`.
+- **robots.txt is respected, even when it costs results** (wildcard rules included). LinkedIn's
+  guest job pages, SmartRecruiters' posting API, many Personio feeds and JobTeaser's listing
+  pages are disallowed, so Radar does not read them. Details in [docs/SOURCES.md](docs/SOURCES.md).
+- **No CAPTCHA solving, no anti-bot evasion**: no proxies, no fingerprint tricks, no
+  parallelism, an honest user agent. A checkpoint, captcha, HTTP 429/999 or an expired session
+  **pauses** that source at once, without retrying; *Oggi* shows the pause and what to do, and
+  the source stays off until the user resumes it. A failing source never stops the others.
+- **Sessions stay local**: the linkedin-cli session and the JobTeaser browser profile live only
+  on the user's Mac; cookies are never read, exported or logged.
+- **Email**: one folder/label, opened with `EXAMINE` and fetched with `BODY.PEEK` (the client
+  refuses any command that could mark, move or delete). Only LinkedIn and JobTeaser alert senders
+  are downloaded; every other message is ignored, never logged and never sent to the LLM.
+  Credentials (a Gmail app password or an Outlook OAuth2 token) live in the macOS keychain or the
+  local `.env`.
+- **Facts, not embellishments**: drafts may state only facts from the user's fact bank
+  (`config/facts.yaml`); anything else becomes `[CHECK: ...]`, and a second LLM call plus a
+  deterministic check flag every unsupported claim in *Pacchetto*.
+- **Contacts**: public search results only, never a LinkedIn login. A contact is kept only if
+  its URL appears in the search results, and Radar stores only name, title, public URL and a
+  one-line reason, marked *da verificare*.
+- **LLM data**: posting text and the relevant facts go to the configured LLM provider (Groq by
+  default). The `fake` provider keeps everything offline; embeddings are computed locally.
+- **Logs** contain counts only: no names, titles, email content or keys.
+- LinkedIn's User Agreement restricts automated access; the optional LinkedIn features use the
+  user's own session at a human pace and are the user's own responsibility.
 
 ## Self-hosting on Postgres (optional)
 
