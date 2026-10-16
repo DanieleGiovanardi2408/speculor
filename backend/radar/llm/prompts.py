@@ -329,24 +329,33 @@ Rules:
 - what_doesnt_fit: ITALIAN, at most 2 short sentences, the main concrete gap or blocker (skill,
   language, start date, seniority, location). If nothing blocks, write "Nessun ostacolo evidente.".
 - The candidate wants an INTERNSHIP (or junior role) starting February 2027, flexible until
-  April 2027, in: AI/LLM engineering, data science/ML, forward deployed engineering, AI
-  consulting, product/strategy in tech, venture capital.
+  April 2027. Top areas: AI/ML/LLM engineering, data science and analytics, AI/data
+  consulting, venture capital and investment, strategy and business analysis (including
+  fintech strategy), forward deployed engineering. Product roles count only for AI/data
+  products. The candidate speaks Italian (native) and English (C1) only.
 - Priority rubric (apply strictly):
-  Alta = the main work is in one of those target areas (AI, ML, LLM, data science, data
-  engineering for analytics/AI, FDE, AI/data consulting, product or strategy, VC) AND the start
-  is compatible (Feb-Apr 2027, flexible, or not stated) AND no hard blocker.
-  Media = adjacent role (generic software engineering, fullstack, backend, frontend, QA,
-  BI/reporting, quant/trading, operations analytics) with a compatible start, OR a target role
-  with one real gap (missing key skill, enrollment agreement needed, unclear start).
+  Alta = the main work is in one of the top areas AND the start is compatible (Feb-Apr 2027,
+  flexible, or not stated) AND no hard blocker AND the job can be done in Italian or English.
+  Media = adjacent role (generic software engineering, fullstack, backend, frontend, QA or
+  testing, DevOps, sales, BI/reporting only, quant/trading, operations analytics) with a
+  compatible start, OR a top-area role with one real gap (missing key skill, enrollment
+  agreement needed, unclear start, description written mostly in French, German, Spanish or
+  Dutch so that language is probably needed). Adjacent roles are never Alta.
   Bassa = off-target area, OR start incompatible (summer internship, starts June-September
-  2027, or before 2027), OR a hard blocker (required language, visa, seniority).
-- RADAR FLAGS in the posting are facts from deterministic checks: take them into account in
-  what_doesnt_fit and warnings (e.g. a French or Spanish internship needs a university
-  agreement; "start not stated" means confirm the start date).
+  2027, or before 2027), OR a hard blocker (a language other than Italian/English required,
+  visa, seniority).
+- RADAR FLAGS in the posting are facts from deterministic checks: take every one of them into
+  account in priority, what_doesnt_fit and warnings. "lingua probabilmente richiesta: X" means
+  the description is mostly in X: never Alta, name the language in what_doesnt_fit. "X
+  required" means a hard language blocker. A French or Spanish internship needs a university
+  agreement; "start not stated" means confirm the start date; a UK location needs a visa.
 - Never claim the start fits unless the posting states a compatible start. "Summer
   internship" is never compatible.
 - start_window: start date or period as stated in the posting, else null.
-- language_requirements: languages the posting requires, e.g. ["English C1", "German"]; [] if none.
+- language_requirements: languages the posting requires, e.g. ["English C1", "German"]; add
+  "(plus)" to a language that is only nice to have, e.g. ["English", "Dutch (plus)"]; list the
+  language of the description when it is not English or Italian and the role clearly needs it;
+  [] if none.
 - warnings: short Italian notes on blockers (deadline passed, must be enrolled as a student,
   start date incompatible, visa, unpaid, very short description); [] if none.
 - confidence: 0 to 1, lower when the description is short or vague.
@@ -520,11 +529,16 @@ def _fake_score(user: str) -> str:
         priority = "Bassa"
     else:
         priority = "Media"
-    langs = [
-        name
-        for name in ("English", "Italian", "German", "French", "Dutch", "Spanish")
-        if re.search(rf"\b{name}\b", user.split("\nPOSTING\n")[-1], re.I)
-    ]
+    posting = user.split("\nPOSTING\n")[-1]
+    langs: list[str] = []
+    for name in ("English", "Italian", "German", "French", "Dutch", "Spanish"):
+        m = re.search(rf"[^.\n]*\b{name}\b[^.\n]*", posting, re.I)
+        if not m:
+            continue
+        hard = name in ("English", "Italian") or re.search(
+            r"\b(?:required|fluent|must|native|mandatory)\b", m.group(0), re.I
+        )
+        langs.append(name if hard else f"{name} (plus)")
     return json.dumps(
         {
             "priority": priority,

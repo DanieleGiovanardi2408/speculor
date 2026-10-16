@@ -144,6 +144,8 @@ class Score(SQLModel, table=True):
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
+    # Version of the post-LLM guards (radar.llm.guards.GUARD_VERSION); None = scored before them.
+    guard_version: int | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
 

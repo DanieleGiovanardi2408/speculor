@@ -20,7 +20,7 @@ from sqlalchemy import exists, func
 from sqlmodel import Session, col, select
 
 from radar import config as radar_config
-from radar.llm import prompts, style
+from radar.llm import guards, prompts, style
 from radar.llm.provider import (
     LLMError,
     LLMProvider,
@@ -194,16 +194,32 @@ def _score_one(
         return None
 
 
+MAX_FLAG_FACTS = 10
+_FIRST_FACTS = guards.LANGUAGE_REQUIRED_IDS | guards.LANGUAGE_PROBABLE_IDS
+
+
+def _filter_rows(session: Session, posting: Posting) -> list[FilterResult]:
+    """Filter hits that are facts for the scorer: every flag, plus rejects the user overrode.
+
+    Language findings come first so the fact cap never drops them.
+    """
+    rows = session.exec(select(FilterResult).where(FilterResult.posting_id == posting.id)).all()
+    kept = [r for r in rows if r.action == "flag" or r.overridden]
+    return sorted(kept, key=lambda r: (r.rule_id not in _FIRST_FACTS, r.id or 0))
+
+
+def _fact(row: FilterResult) -> str:
+    text = row.reason
+    if row.rule_id in guards.LANGUAGE_PROBABLE_IDS and row.evidence:
+        text += f" ({row.evidence})"
+    if row.action == "reject":
+        text += " (reject overridden by the user: still true, judge it)"
+    return text
+
+
 def _flags(session: Session, posting: Posting) -> list[str]:
-    """Reasons of the non-overridden filter flags, given to the LLM as facts."""
-    rows = session.exec(
-        select(FilterResult).where(
-            FilterResult.posting_id == posting.id,
-            FilterResult.action == "flag",
-            col(FilterResult.overridden).is_(False),
-        )
-    ).all()
-    return [r.reason for r in rows][:6]
+    """Reasons of the filter hits, given to the LLM as RADAR FLAGS facts."""
+    return [_fact(r) for r in _filter_rows(session, posting)][:MAX_FLAG_FACTS]
 
 
 def _rules_score(posting: Posting, keyword: str) -> Score:
@@ -240,16 +256,30 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
         session.commit()
     llm_queue.sort(key=lambda p: -relevance.rank(p.title))
     postings = llm_queue[:limit]
-    stats: dict[str, Any] = {
-        "candidates": len(postings),
-        "rules_bassa": auto,
-        "scored": 0,
-        "invalid": 0,
-        "errors": 0,
-        "requests": 0,
-        "input_tokens": 0,
-        "output_tokens": 0,
-    }
+    stats: dict[str, Any] = {"candidates": len(postings), "rules_bassa": auto}
+    return _score_with_llm(session, run_id, postings, profile, relevance, stats)
+
+
+def _score_with_llm(
+    session: Session,
+    run_id: int | None,
+    postings: list[Posting],
+    profile: dict[str, Any],
+    relevance: Relevance,
+    stats: dict[str, Any],
+) -> dict[str, Any]:
+    """Score ``postings`` with the LLM (one request each), then apply the guards."""
+    stats.update(
+        {
+            "scored": 0,
+            "invalid": 0,
+            "errors": 0,
+            "capped": 0,
+            "requests": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+        }
+    )
     if not postings:
         return stats
     try:
@@ -258,8 +288,8 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
         log.warning("scoring skipped: missing API key (%d pending)", len(postings))
         return {
             "skipped": "missing_key",
-            "candidates": len(postings),
-            "rules_bassa": auto,
+            "candidates": stats["candidates"],
+            "rules_bassa": stats.get("rules_bassa", 0),
             "scored": 0,
         }
     stats["provider"], stats["model"] = provider.name, provider.model
@@ -270,7 +300,9 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
     for posting in postings:
         assert posting.id is not None
         company = session.get(Company, posting.company_id) if posting.company_id else None
-        user = prompts.scoring_user(profile_text, posting, company, _flags(session, posting))
+        rows = _filter_rows(session, posting)
+        facts = [_fact(r) for r in rows][:MAX_FLAG_FACTS]
+        user = prompts.scoring_user(profile_text, posting, company, facts)
         results: list[LLMResult] = []
         try:
             out = _score_one(provider, system, user, results)
@@ -297,21 +329,33 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
             stats["invalid"] += 1
             continue
         last = results[-1]
+        guard = guards.apply_guards(
+            out.priority,
+            title=posting.title,
+            language_requirements=out.language_requirements,
+            flags=[guards.FlagFact(r.rule_id, r.reason, r.overridden) for r in rows],
+            relevance=relevance,
+            warnings=out.warnings,
+            what_doesnt_fit=out.what_doesnt_fit,
+        )
+        if guard.applied:
+            stats["capped"] += 1
         session.add(
             Score(
                 posting_id=posting.id,
                 content_hash=posting.content_hash,
-                priority=out.priority,
+                priority=guard.priority,
                 why_fits=out.why_fits,
-                what_doesnt_fit=out.what_doesnt_fit,
+                what_doesnt_fit=guard.what_doesnt_fit,
                 start_window=out.start_window,
                 language_requirements=out.language_requirements,
-                warnings=out.warnings,
+                warnings=guard.warnings,
                 confidence=out.confidence,
                 provider=last.provider,
                 model=last.model,
                 input_tokens=sum(r.input_tokens for r in results),
                 output_tokens=sum(r.output_tokens for r in results),
+                guard_version=guards.GUARD_VERSION,
             )
         )
         session.commit()
@@ -325,3 +369,83 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
         f", stopped ({stats['stopped']})" if "stopped" in stats else "",
     )
     return stats
+
+
+# --------------------------------------------------------------------------- re-scoring
+
+LANGUAGE_RULE_IDS = guards.LANGUAGE_REQUIRED_IDS | guards.LANGUAGE_PROBABLE_IDS
+_KEEP_PROVIDERS = ("manual", "rules")  # the user's own scores and the rule-based Bassa
+
+
+def language_flagged_scored(session: Session) -> list[tuple[Posting, list[Score]]]:
+    """Scoreable postings with a language finding and LLM scores from before the current guards.
+
+    Postings that also carry a manual score are left alone. Highest current priority first.
+    """
+    flagged = select(FilterResult.posting_id).where(
+        col(FilterResult.rule_id).in_(LANGUAGE_RULE_IDS)
+    )
+    postings = session.exec(
+        select(Posting).where(
+            col(Posting.id).in_(flagged),
+            Posting.status == "open",
+            col(Posting.filter_state).in_(SCOREABLE_FILTER_STATES),
+            col(Posting.duplicate_of).is_(None),
+        )
+    ).all()
+    out: list[tuple[Posting, list[Score]]] = []
+    for p in postings:
+        rows = session.exec(select(Score).where(Score.posting_id == p.id)).all()
+        if any(r.provider == "manual" for r in rows):
+            continue
+        stale = [
+            r
+            for r in rows
+            if r.provider not in _KEEP_PROVIDERS and (r.guard_version or 0) < guards.GUARD_VERSION
+        ]
+        if stale:
+            out.append((p, stale))
+    best = {"Alta": 0, "Media": 1, "Bassa": 2}
+    out.sort(key=lambda ps: (min(best.get(s.priority, 3) for s in ps[1]), -(ps[0].id or 0)))
+    return out
+
+
+def rescore_flagged_language(
+    session: Session, run_id: int | None = None, *, dry_run: bool = False, limit: int | None = None
+) -> dict[str, Any]:
+    """Delete the stale LLM scores of language-flagged postings and score them again.
+
+    ``dry_run`` only counts. Postings left unscored (rate limit) have no Score any more, so the
+    next ``radar score`` / daily run picks them up as pending.
+    """
+    targets = language_flagged_scored(session)
+    by_priority: dict[str, int] = {}
+    for _, stale in targets:
+        latest = max(stale, key=lambda s: (s.created_at, s.id or 0))
+        by_priority[latest.priority] = by_priority.get(latest.priority, 0) + 1
+    stats: dict[str, Any] = {
+        "postings": len(targets),
+        "stale_scores": sum(len(s) for _, s in targets),
+        "by_priority": by_priority,
+    }
+    if dry_run or not targets:
+        return stats
+    try:
+        get_provider("scoring")
+    except MissingKeyError:
+        return {**stats, "skipped": "missing_key"}  # nothing deleted
+    chosen = targets[:limit] if limit else targets
+    for _, stale in chosen:
+        for row in stale:
+            session.delete(row)
+    session.commit()
+    profile = radar_config.load_yaml_config("profile")
+    llm_stats = _score_with_llm(
+        session,
+        run_id,
+        [p for p, _ in chosen],
+        profile,
+        Relevance(profile),
+        {"candidates": len(chosen)},
+    )
+    return {**stats, "deleted": sum(len(s) for _, s in chosen), **llm_stats}

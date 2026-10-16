@@ -58,8 +58,10 @@ flowchart LR
    list only some postings (email alerts) never close a posting by its absence.
 4. **Hard filters**: deterministic rules in `config/rules.yaml` (`reject` or `flag`): start
    window (February 2027, flexible until April 2027), graduation year, PhD-only, 3+ years of
-   experience, location (EU/EEA + Switzerland), UK visa, required languages, and a flag for
-   French/Spanish enrollment-agreement requirements. Every hit stores the rule and the text that
+   experience, location (EU/EEA + Switzerland), UK visa, required languages, a flag for
+   descriptions written mostly in French/German/Spanish/Dutch/Portuguese (local detector,
+   `pipeline/langdetect.py`, no LLM), and a flag for French/Spanish enrollment-agreement
+   requirements. Every hit stores the rule and the text that
    triggered it; the user can restore a posting with one click and undo it.
    The `post_graduation` flag marks graduate programmes and full-time roles that start after July
    2027 or after graduation. It is not an exclusion: those postings form a separate track, shown
@@ -67,6 +69,12 @@ flowchart LR
 5. **Score**: clearly off-target titles (tax, payroll, sales, legal, HR, ...) get a deterministic
    "Bassa" without an LLM call; target roles are scored first. The LLM returns priority
    Alta/Media/Bassa, why it fits, what does not, start window, language requirements and warnings.
+   Every filter flag is passed to the scorer as a fact. Deterministic caps then apply
+   (`llm/guards.py`): a required foreign language means Bassa at most, a description mostly in
+   a foreign language Media at most, adjacent roles (generic software engineering, QA,
+   fullstack, sales, BI/reporting) Media at most; each cap adds a warning.
+   `radar rescore --flagged-language [--dry-run]` re-scores language-flagged postings scored
+   before the caps.
    Scores are cached by content hash, so unchanged postings are not re-scored, and when the
    free-tier daily limit is hit the remaining postings are picked up by the next run.
 6. **Packs and drafts**: for the best postings, a cover letter (at most 250 words, opening with
