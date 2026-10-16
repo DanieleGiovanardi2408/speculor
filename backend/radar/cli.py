@@ -21,6 +21,10 @@ app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
 app.add_typer(connectors_app, name="connectors")
+imap_app = typer.Typer(
+    no_args_is_help=True, help="Email-alert mailbox: login (Outlook), app password (Gmail), check."
+)
+app.add_typer(imap_app, name="imap")
 console = Console()
 
 
@@ -225,6 +229,128 @@ def connectors_resume(source: str) -> None:
     with session_scope() as s:
         ok = resume(s, source)
     console.print("Ripresa." if ok else "Fonte non in pausa.")
+
+
+def _imap_user() -> str:
+    user = (get_settings().imap_user or "").strip()
+    if not user:
+        console.print("Imposta prima RADAR_IMAP_USER nel file .env.")
+        raise typer.Exit(2)
+    return user
+
+
+def _resume_email() -> None:
+    """The user just fixed the credentials: lift a pause of the "email" source, if any."""
+    try:
+        from radar.connectors.status import resume
+        from radar.db import session_scope
+
+        with session_scope() as s:
+            if resume(s, "email"):
+                console.print("Fonte email riattivata.")
+    except Exception:  # no DB yet: nothing to resume
+        pass
+
+
+@imap_app.command("status")
+def imap_status() -> None:
+    """Show the IMAP setup (mode, host, folder, which secrets exist; never their values)."""
+    from radar.connectors.imap_auth import (
+        default_host,
+        effective_mode,
+        has_oauth_token,
+        stored_password,
+    )
+
+    s = get_settings()
+    user = (s.imap_user or "").strip()
+    mode = effective_mode(s.imap_auth, user)
+    console.print(f"utente impostato: {'sì' if user else 'no'}")
+    console.print(f"modalità: {mode} (RADAR_IMAP_AUTH={s.imap_auth})")
+    console.print(f"host: {s.imap_host or default_host(user) or '(manca RADAR_IMAP_HOST)'}")
+    console.print(f"cartella: {s.imap_folder}")
+    if not user:
+        return
+    if mode == "oauth2":
+        console.print(f"client id: {'impostato' if s.imap_oauth_client_id else 'MANCANTE'}")
+        console.print(f"tenant: {s.imap_oauth_tenant}")
+        console.print(f"token nel portachiavi: {'sì' if has_oauth_token(user) else 'no'}")
+    else:
+        env = bool(s.imap_password and s.imap_password.get_secret_value())
+        console.print(f"password in .env: {'sì' if env else 'no'}")
+        console.print(f"password nel portachiavi: {'sì' if stored_password(user) else 'no'}")
+
+
+@imap_app.command("login")
+def imap_login() -> None:
+    """Outlook.com (OAuth2): sign in once with the device code; the token goes to the keychain."""
+    from radar.connectors.imap_auth import MsalTokens
+
+    s = get_settings()
+    user = _imap_user()
+    client_id = (s.imap_oauth_client_id or "").strip()
+    if not client_id:
+        console.print("Imposta RADAR_IMAP_OAUTH_CLIENT_ID (vedi docs/RUNNING.md, Email alerts).")
+        raise typer.Exit(2)
+    ok = MsalTokens(client_id, user, s.imap_oauth_tenant).device_login(console.print)
+    if not ok:
+        raise typer.Exit(1)
+    console.print("Token salvato nel portachiavi. Prova con `radar imap check`.")
+    _resume_email()
+
+
+@imap_app.command("set-password")
+def imap_set_password() -> None:
+    """Gmail (or other password mode): store the app password in the macOS keychain."""
+    from radar.connectors.imap_auth import store_password
+
+    user = _imap_user()
+    secret = typer.prompt("Password per app", hide_input=True).replace(" ", "").strip()
+    if not secret:
+        raise typer.Exit(2)
+    store_password(user, secret)
+    console.print("Password salvata nel portachiavi (puoi togliere RADAR_IMAP_PASSWORD da .env).")
+    _resume_email()
+
+
+@imap_app.command("logout")
+def imap_logout() -> None:
+    """Delete the stored IMAP password and OAuth token from the keychain."""
+    from radar.connectors.imap_auth import forget
+
+    removed = forget(_imap_user())
+    console.print(f"Rimossi: {', '.join(removed)}." if removed else "Niente da rimuovere.")
+
+
+@imap_app.command("check")
+def imap_check() -> None:
+    """Connect read-only and count alert emails in the folder (counts only, no content)."""
+    from datetime import date, timedelta
+
+    from radar.connectors.base import SourceError
+    from radar.connectors.email_alerts import EmailAlertsConnector, alert_ids
+    from radar.connectors.status import SourcePaused
+
+    s = get_settings()
+    conn = EmailAlertsConnector.from_settings(s)
+    if conn is None:
+        console.print("Configurazione IMAP incompleta: esegui `radar imap status`.")
+        raise typer.Exit(2)
+    since = date.today() - timedelta(days=conn.since_days)
+    try:
+        with conn.mailbox() as box:
+            found = alert_ids(box, since)
+    except SourcePaused as exc:
+        console.print(f"{exc.reason}: {exc.action}")
+        raise typer.Exit(1) from None
+    except SourceError as exc:
+        console.print(str(exc))
+        raise typer.Exit(1) from None
+    kinds = {k: sum(1 for _, x in found if x == k) for k in ("linkedin", "jobteaser")}
+    console.print(
+        f"OK: cartella aperta in sola lettura; ultimi {conn.since_days} giorni: "
+        f"{kinds['linkedin']} alert LinkedIn, {kinds['jobteaser']} JobTeaser."
+    )
 
 
 @db_app.command("copy")

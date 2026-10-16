@@ -7,6 +7,7 @@ import email.policy
 import email.utils
 import imaplib
 import logging
+from collections.abc import Callable
 from datetime import date, datetime
 from email.message import Message
 from pathlib import Path
@@ -17,11 +18,20 @@ from conn_helpers import FIXTURES
 
 from radar.config import Settings
 from radar.connectors.base import SourceError
-from radar.connectors.email_alerts import EmailAlertsConnector, imap_date
+from radar.connectors.email_alerts import (
+    EmailAlertsConnector,
+    ReadOnlyClient,
+    ReadOnlyIMAP4_SSL,
+    ReadOnlyViolation,
+    check_command,
+    imap_date,
+)
 from radar.connectors.email_parsers import classify, parse_message
 from radar.connectors.email_parsers.common import clean_url, unwrap_url
 from radar.connectors.http import PoliteClient
+from radar.connectors.imap_auth import OAuth2Auth, PasswordAuth, xoauth2_string
 from radar.connectors.registry import build_connectors
+from radar.connectors.status import SourcePaused
 from radar.pipeline.closed import is_exhaustive
 from radar.pipeline.normalize import canonical_url
 
@@ -42,25 +52,37 @@ def load(name: str) -> Message:
 
 
 class FakeImap:
-    """Minimal IMAP4 stand-in that records calls and evaluates SINCE/FROM searches."""
+    """Minimal IMAP4 stand-in that records calls and evaluates SINCE searches."""
 
     def __init__(
         self,
         messages: list[bytes],
         *,
         fail_login: bool = False,
+        fail_auth: bool = False,
         ignore_criteria: bool = False,
     ) -> None:
         self.messages = messages
         self.fail_login = fail_login
+        self.fail_auth = fail_auth
         self.ignore_criteria = ignore_criteria
         self.calls: list[tuple[Any, ...]] = []
+        self.sasl: bytes | None = None
 
     def login(self, user: str, password: str) -> tuple[str, list[Any]]:
         self.calls.append(("login", user))
         if self.fail_login:
             raise imaplib.IMAP4.error(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
         return "OK", [b"LOGIN completed"]
+
+    def authenticate(
+        self, mechanism: str, authobject: Callable[[bytes], bytes | None]
+    ) -> tuple[str, Any]:
+        self.calls.append(("authenticate", mechanism))
+        self.sasl = authobject(b"")
+        if self.fail_auth:
+            raise imaplib.IMAP4.error(b"AUTHENTICATE failed.")
+        return "OK", [b"AUTHENTICATE completed."]
 
     def select(self, mailbox: str = "INBOX", readonly: bool = False) -> tuple[str, list[Any]]:
         self.calls.append(("select", mailbox, readonly))
@@ -72,19 +94,27 @@ class FakeImap:
             return "OK", [" ".join(str(i + 1) for i in range(len(self.messages))).encode()]
         args = list(criteria)
         since = datetime.strptime(args[args.index("SINCE") + 1], "%d-%b-%Y").date()
-        sender = args[args.index("FROM") + 1].strip('"').lower()
         hits = []
         for i, raw in enumerate(self.messages, start=1):
             msg = email.message_from_bytes(raw, policy=email.policy.default)
             sent = email.utils.parsedate_to_datetime(str(msg["Date"])).date()
-            if sent >= since and sender in str(msg["From"]).lower():
+            if sent >= since:
                 hits.append(str(i))
         return "OK", [" ".join(hits).encode()]
 
     def fetch(self, message_set: str, message_parts: str) -> tuple[str, list[Any]]:
         self.calls.append(("fetch", message_set, message_parts))
-        raw = self.messages[int(message_set) - 1]
-        return "OK", [(f"{message_set} (BODY[] {{{len(raw)}}}".encode(), raw), b")"]
+        out: list[Any] = []
+        for num in message_set.split(","):
+            raw = self.messages[int(num) - 1]
+            if "HEADER.FIELDS" in message_parts:
+                msg = email.message_from_bytes(raw, policy=email.policy.default)
+                raw = f"From: {msg['From']}\r\nDate: {msg['Date']}\r\n\r\n".encode()
+                out.append((f"{num} (BODY[HEADER.FIELDS (FROM DATE)] {{{len(raw)}}}".encode(), raw))
+            else:
+                out.append((f"{num} (BODY[] {{{len(raw)}}}".encode(), raw))
+            out.append(b")")
+        return "OK", out
 
     def logout(self) -> tuple[str, list[Any]]:
         self.calls.append(("logout",))
@@ -92,12 +122,14 @@ class FakeImap:
 
 
 def make(
-    fake: FakeImap, *, extra_senders: tuple[str, ...] = ("alerts@jobs.example.com",)
+    fake: FakeImap,
+    *,
+    extra_senders: tuple[str, ...] = ("alerts@jobs.example.com",),
+    auth: PasswordAuth | OAuth2Auth | None = None,
 ) -> EmailAlertsConnector:
     return EmailAlertsConnector(
         "imap.example.com",
-        "alerts@example.com",
-        PASSWORD,
+        auth or PasswordAuth("alerts@example.com", PASSWORD),
         folder="Job Alerts",
         since_days=14,
         extra_senders=extra_senders,
@@ -111,27 +143,31 @@ def mailbox(*names: str) -> list[bytes]:
 
 
 # ------------------------------------------------------------------ IMAP behaviour
-def test_readonly_select_search_criteria_and_peek_fetch() -> None:
+def test_readonly_select_since_search_header_prefilter_and_peek_fetch() -> None:
     fake = FakeImap(mailbox(*ALL_FIXTURES))
     make(fake).fetch()
     assert fake.calls[0] == ("login", "alerts@example.com")
     assert fake.calls[1] == ("select", '"Job Alerts"', True)
     searches = [c for c in fake.calls if c[0] == "search"]
-    assert {c[5] for c in searches} == {
-        '"jobalerts-noreply@linkedin.com"',
-        '"jobs-listings@linkedin.com"',
-        '"jobs-noreply@linkedin.com"',
-        '"jobteaser.com"',
-        '"alerts@jobs.example.com"',
-    }
-    for c in searches:
-        assert c[1:5] == (None, "SINCE", "02-Oct-2026", "FROM")
+    assert searches == [("search", None, "SINCE", "02-Oct-2026")]
     fetches = [c for c in fake.calls if c[0] == "fetch"]
-    assert fetches and all(c[2] == "(BODY.PEEK[])" for c in fetches)
-    assert {c[1] for c in fetches} == {"1", "2", "3", "4"}  # non-alert not matched by FROM
+    headers = [c for c in fetches if "HEADER" in c[2]]
+    bodies = [c for c in fetches if "HEADER" not in c[2]]
+    assert headers == [("fetch", "5,4,3,2,1", "(BODY.PEEK[HEADER.FIELDS (FROM DATE)])")]
+    assert bodies and all(c[2] == "(BODY.PEEK[])" for c in bodies)
+    # the non-alert email (#5) is never downloaded: only its From header is read
+    assert {c[1] for c in bodies} == {"1", "2", "3", "4"}
     assert fake.calls[-1] == ("logout",)
     # nothing that could change server state
     assert not {c[0] for c in fake.calls} & {"store", "copy", "move", "expunge", "uid"}
+
+
+def test_only_allowlisted_senders_are_downloaded_by_default() -> None:
+    fake = FakeImap(mailbox(*ALL_FIXTURES))
+    postings = make(fake, extra_senders=()).fetch()
+    assert {p.extra["via"] for p in postings} == {"linkedin_alert", "jobteaser_alert"}
+    bodies = {c[1] for c in fake.calls if c[0] == "fetch" and "HEADER" not in c[2]}
+    assert bodies == {"1", "2", "3"}  # LinkedIn x2, JobTeaser; not generic, not non-alert
 
 
 def test_imap_date_is_locale_independent() -> None:
@@ -168,15 +204,18 @@ def test_non_alert_ignored_even_if_search_returns_it() -> None:
     fake = FakeImap(mailbox("non_alert.eml"), ignore_criteria=True)
     assert make(fake).fetch() == []
     assert classify(load("non_alert.eml")) is None
+    assert not [c for c in fake.calls if c[0] == "fetch" and "HEADER" not in c[2]]
 
 
-def test_login_failure_is_generic_source_error(caplog: pytest.LogCaptureFixture) -> None:
+def test_login_failure_pauses_with_generic_message(caplog: pytest.LogCaptureFixture) -> None:
     fake = FakeImap([], fail_login=True)
     caplog.set_level(logging.DEBUG)
-    with pytest.raises(SourceError) as info:
+    with pytest.raises(SourcePaused) as info:
         make(fake).fetch()
     err = info.value
-    assert str(err) == "email: IMAP login failed"
+    assert isinstance(err, SourceError)
+    assert (err.source, err.reason) == ("email", "login IMAP rifiutato")
+    assert "set-password" in err.action
     assert PASSWORD not in repr(err) and err.__cause__ is None and err.__suppress_context__
     assert PASSWORD not in caplog.text
     assert fake.calls[-1] == ("logout",)
@@ -186,7 +225,7 @@ def test_connection_failure_is_generic_source_error() -> None:
     def boom(host: str, port: int) -> FakeImap:
         raise OSError(f"cannot reach {host} with {PASSWORD}")
 
-    conn = EmailAlertsConnector("imap.example.com", "u", PASSWORD, factory=boom)
+    conn = EmailAlertsConnector("imap.example.com", PasswordAuth("u", PASSWORD), factory=boom)
     with pytest.raises(SourceError) as info:
         conn.fetch()
     assert str(info.value) == "email: cannot connect to the IMAP server"
@@ -198,13 +237,126 @@ def test_logs_counts_only(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="radar.connectors.email_alerts")
     make(FakeImap(mailbox(*ALL_FIXTURES))).fetch()
     text = caplog.text
-    assert "4 messages" in text and "8 postings" in text
+    assert "4 alert messages" in text and "8 postings" in text
     for leak in ("Fictional", "linkedin.com", "Data Science", "Nuove offerte", "alerts@"):
         assert leak not in text
 
 
 def test_not_exhaustive_so_never_closed_by_absence() -> None:
     assert is_exhaustive(make(FakeImap([]))) is False
+
+
+# ------------------------------------------------------------------ XOAUTH2
+TOKEN = "EwB-fake-access-token"  # fake
+
+
+def test_oauth2_uses_authenticate_xoauth2_and_never_login() -> None:
+    fake = FakeImap(mailbox("linkedin_alert.eml"))
+    auth = OAuth2Auth("alerts@example.com", lambda: TOKEN)
+    assert TOKEN not in repr(auth)
+    postings = make(fake, auth=auth).fetch()
+    assert postings
+    assert ("authenticate", "XOAUTH2") in fake.calls
+    assert not [c for c in fake.calls if c[0] == "login"]
+    assert fake.sasl == f"user=alerts@example.com\x01auth=Bearer {TOKEN}\x01\x01".encode()
+    assert xoauth2_string("u@example.com", "t") == b"user=u@example.com\x01auth=Bearer t\x01\x01"
+
+
+def test_oauth2_rejected_token_pauses_source(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    fake = FakeImap([], fail_auth=True)
+    with pytest.raises(SourcePaused) as info:
+        make(fake, auth=OAuth2Auth("alerts@example.com", lambda: TOKEN)).fetch()
+    assert (info.value.source, info.value.reason) == ("email", "token scaduto")
+    assert info.value.action == "Esegui `radar imap login`"
+    assert TOKEN not in str(info.value) and TOKEN not in caplog.text
+    assert fake.calls[-1] == ("logout",)
+
+
+def test_oauth2_refresh_failure_pauses_before_any_imap_command() -> None:
+    def no_token() -> str:
+        raise SourcePaused("email", "token scaduto", "Esegui `radar imap login`")
+
+    fake = FakeImap(mailbox("linkedin_alert.eml"))
+    with pytest.raises(SourcePaused):
+        make(fake, auth=OAuth2Auth("alerts@example.com", no_token)).fetch()
+    assert [c[0] for c in fake.calls] == ["logout"]
+
+
+# ------------------------------------------------------------------ read-only guards
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.store("1", "+FLAGS", "(\\Seen)"),
+        lambda c: c.copy("1", "Trash"),
+        lambda c: c.move("1", "Trash"),
+        lambda c: c.expunge(),
+        lambda c: c.append("radar", None, None, b"x"),
+        lambda c: c.delete("radar"),
+        lambda c: c.uid("STORE", "1", "+FLAGS", "(\\Deleted)"),
+        lambda c: c.xatom("MOVE", "1", "Trash"),
+        lambda c: c._command("STORE", "1"),
+        lambda c: c.select("radar", readonly=False),
+        lambda c: c.fetch("1", "(BODY[])"),
+        lambda c: c.fetch("1", "(RFC822)"),
+    ],
+)
+def test_readonly_client_refuses_mutating_commands(call: Callable[[Any], Any]) -> None:
+    fake = FakeImap(mailbox("linkedin_alert.eml"))
+    with pytest.raises(ReadOnlyViolation):
+        call(ReadOnlyClient(fake))
+    assert fake.calls == []  # nothing reached the server
+
+
+def test_readonly_client_allows_peek_and_examine() -> None:
+    fake = FakeImap(mailbox("linkedin_alert.eml"))
+    client = ReadOnlyClient(fake)
+    assert client.select("radar")[0] == "OK"
+    assert client.fetch("1", "(BODY.PEEK[])")[0] == "OK"
+    assert client.fetch("1", "(RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM)])")[0] == "OK"
+    assert fake.calls[0] == ("select", "radar", True)
+
+
+def _offline_imaplib() -> ReadOnlyIMAP4_SSL:
+    """A ReadOnlyIMAP4_SSL that was never connected (no socket): any command reaching the wire
+    would fail with an AttributeError, so ReadOnlyViolation proves the guard ran first."""
+    conn = object.__new__(ReadOnlyIMAP4_SSL)
+    conn.state = "SELECTED"
+    conn.untagged_responses = {}
+    conn.is_readonly = True
+    conn._encoding = "ascii"
+    conn.utf8_enabled = False
+    return conn
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.store("1", "+FLAGS", "(\\Seen)"),
+        lambda c: c.copy("1", "Trash"),
+        lambda c: c.expunge(),
+        lambda c: c.uid("MOVE", "1", "Trash"),
+        lambda c: c.uid("FETCH", "1", "(BODY.PEEK[])"),
+        lambda c: c.select("radar"),  # read-write SELECT: only EXAMINE is allowed
+        lambda c: c.fetch("1", "(BODY[])"),
+        lambda c: c.fetch("1", "(RFC822)"),
+        lambda c: c.append("radar", None, None, b"x"),
+        lambda c: c.delete("radar"),
+        lambda c: c.close(),
+    ],
+)
+def test_imaplib_subclass_refuses_mutating_commands_on_the_wire(call: Callable[[Any], Any]) -> None:
+    with pytest.raises(ReadOnlyViolation):
+        call(_offline_imaplib())
+
+
+def test_guard_allowlist() -> None:
+    for name in ("LOGIN", "AUTHENTICATE", "EXAMINE", "SEARCH", "LOGOUT", "CAPABILITY"):
+        check_command(name)
+    check_command("FETCH", ("1", "(BODY.PEEK[HEADER.FIELDS (FROM DATE)])"))
+    for name in ("STORE", "COPY", "MOVE", "EXPUNGE", "SELECT", "UID", "APPEND", "CLOSE"):
+        with pytest.raises(ReadOnlyViolation):
+            check_command(name)
 
 
 # ------------------------------------------------------------------ parsers

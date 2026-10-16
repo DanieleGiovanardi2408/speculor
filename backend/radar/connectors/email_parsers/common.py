@@ -5,12 +5,13 @@ Alert emails are parsed from their own content only: no URL found in an email is
 
 from __future__ import annotations
 
+import base64
 import html
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from email.message import EmailMessage, Message
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
@@ -42,6 +43,7 @@ _EXTRA_TRACKING = re.compile(
     re.I,
 )
 _URL_IN_TEXT = re.compile(r"https?://[^\s<>\"')\]]+")
+_B64_SEG = re.compile(r"^[A-Za-z0-9_-]{16,}={0,2}$")
 _WS = re.compile(r"\s+")
 _SEPARATOR_LINE = re.compile(r"^[-_=*·•.\s]{5,}$")
 
@@ -87,8 +89,37 @@ def is_noise(line: str) -> bool:
     return not line or bool(_NOISE.match(line)) or is_cta(line)
 
 
+def _target_in_path(path: str) -> str | None:
+    """A URL embedded in a click-tracking path: percent-encoded or base64(url)-encoded segment.
+
+    E.g. ``/CL0/https:%2F%2Fexample.com%2F...`` (Amazon SES) or ``/e/c/<base64 JSON with href>``.
+    Purely offline: the tracking link itself is never requested.
+    """
+    for seg in path.split("/"):
+        if len(seg) < 12:
+            continue
+        decoded = unquote(seg)
+        if decoded.startswith(("http://", "https://", "http:/", "https:/")):
+            return re.sub(r"^(https?):/+", r"\1://", decoded)
+        if not _B64_SEG.match(seg):
+            continue
+        try:
+            raw = base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4)).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        found = _URL_IN_TEXT.search(raw.replace("\\/", "/"))
+        if found:
+            return found.group(0)
+    return None
+
+
 def unwrap_url(href: str, is_target: Callable[[str], bool] | None = None) -> str:
-    """Follow redirect wrappers whose target URL is in a query parameter (no network)."""
+    """Follow redirect wrappers whose target URL is inside the link itself (no network).
+
+    The target may be in a query parameter (Outlook safelinks ``url``, Google ``q``, ...) or, when
+    ``is_target`` is given, encoded in a path segment; a wrapper without a recoverable target is
+    returned unchanged (and callers drop it, since it does not match a posting URL).
+    """
     url = html.unescape(href.strip())
     for _ in range(4):
         parts = urlsplit(url)
@@ -105,6 +136,8 @@ def unwrap_url(href: str, is_target: Callable[[str], bool] | None = None) -> str
             ),
             None,
         )
+        if target is None and is_target is not None:
+            target = _target_in_path(parts.path)
         if target is None:
             return url
         url = target

@@ -2,7 +2,8 @@
 
 Kinds: ``linkedin`` (LinkedIn job alerts), ``jobteaser`` (JobTeaser offer digests) and
 ``generic`` (configured extra senders; only links to supported ATS postings are kept).
-Any other message is ignored.
+Any other message is ignored: classification looks at the From header only, so non-alert
+emails are never parsed (and never reach the database or the LLM).
 """
 
 from __future__ import annotations
@@ -18,9 +19,6 @@ from radar.connectors.email_parsers.common import message_bodies
 from radar.schemas import RawPosting
 
 AlertKind = Literal["linkedin", "jobteaser", "generic"]
-
-#: IMAP ``FROM`` search terms for the built-in alert kinds (substring match on the From header).
-BUILTIN_SEARCH_SENDERS: tuple[str, ...] = (*linkedin.SENDERS, "jobteaser.com")
 
 
 def sender_of(msg: Message) -> tuple[str, str]:
@@ -76,4 +74,4 @@ def parse_message(msg: Message, extra_senders: Iterable[str] = ()) -> list[RawPo
     return generic.parse(body_html, body_text, extra)
 
 
-__all__ = ["BUILTIN_SEARCH_SENDERS", "AlertKind", "classify", "parse_message", "sender_of"]
+__all__ = ["AlertKind", "classify", "parse_message", "sender_of"]

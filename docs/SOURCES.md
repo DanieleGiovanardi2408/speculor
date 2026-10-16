@@ -165,28 +165,39 @@ time; that board is then reported and skipped.
   access is ever granted.
 - LinkedIn postings can still be added by hand (see Manual add); they are stored from the URL only.
 
-## Email alerts (IMAP) (`email_alerts.py`, `email_parsers/`)
+## Email alerts (IMAP) (`email_alerts.py`, `imap_auth.py`, `email_parsers/`)
 
-Optional source `email`. It reads job-alert emails from **one Gmail label** (`radar`),
-so LinkedIn and JobTeaser postings arrive without anything being fetched from those sites.
+Optional source `email`. It reads job-alert emails from **one folder/label** (`radar`: a Gmail
+label or an Outlook folder filled by a filter/rule), so LinkedIn and JobTeaser postings arrive
+without anything being fetched from those sites. Setup steps: [RUNNING.md](RUNNING.md#email-alerts-imap).
 
-- **Enable**: in the local `.env` only, set `RADAR_IMAP_HOST` (`imap.gmail.com`),
-  `RADAR_IMAP_USER` and `RADAR_IMAP_PASSWORD` (a Gmail app password, never the main one), and
-  optionally `RADAR_IMAP_FOLDER` (default `radar`, the Gmail label a filter files the alerts
-  under).
-  Optional: `RADAR_IMAP_PORT` (993) and `RADAR_IMAP_SINCE_DAYS` (14). The registry adds the
-  connector only when host, user and password are all set. It can be turned off with
-  `email: {enabled: false}` in the companies config. There are deliberately no extra senders.
-- **Access**: IMAP4 over SSL (`imaplib.IMAP4_SSL`, default TLS context, 30 s timeout). Only the
-  configured label is opened, read-only (`select(folder, readonly=True)`, i.e. `EXAMINE`), and
-  messages are fetched with `BODY.PEEK[]`, so nothing is marked as read. Nothing is ever stored on
-  the server, flagged, moved or deleted.
-- **Search**: one `SEARCH SINCE <today − N days> FROM "<sender>"` per sender:
-  `jobalerts-noreply@linkedin.com`, `jobs-listings@linkedin.com`, `jobs-noreply@linkedin.com`,
-  `jobteaser.com`. Results are newest first, capped at 300 messages. Each message is then
-  classified by its From header. Anything that isn't a LinkedIn alert or a JobTeaser digest
-  (invitations, newsletters, personal mail) is ignored: it is not parsed, stored or sent to the
-  LLM.
+- **Enable**: in the local `.env` only, set `RADAR_IMAP_USER` and the credentials of the auth mode:
+  - `password` (Gmail; default for non-Microsoft addresses): a Google app password, from
+    `RADAR_IMAP_PASSWORD` or the macOS keychain (`radar imap set-password`). `LOGIN` over TLS.
+  - `oauth2` (default for outlook/hotmail/live/msn addresses; Outlook.com no longer accepts
+    passwords since 16 Sep 2024): `RADAR_IMAP_OAUTH_CLIENT_ID` of the user's own Entra app
+    (public client, tenant `consumers`), then `radar imap login` (MSAL device-code flow, scope
+    `https://outlook.office.com/IMAP.AccessAsUser.All`). The MSAL token cache lives only in the
+    keychain; each run refreshes the access token silently and sends `AUTHENTICATE XOAUTH2`.
+  Optional: `RADAR_IMAP_AUTH` (`auto`), `RADAR_IMAP_HOST` (default `outlook.office365.com` /
+  `imap.gmail.com` from the address), `RADAR_IMAP_FOLDER` (`radar`), `RADAR_IMAP_PORT` (993),
+  `RADAR_IMAP_SINCE_DAYS` (14). It can be turned off with `email: {enabled: false}` in the
+  companies config. There are deliberately no extra senders.
+- **Access**: IMAP4 over SSL (default TLS context, 30 s timeout). Read-only is enforced twice:
+  the connector only gets a `ReadOnlyClient` (no store/copy/move/expunge/append/delete/uid
+  methods; `select` is always `EXAMINE`; `fetch` accepts only `BODY.PEEK[...]`), and the real
+  connection is a `ReadOnlyIMAP4_SSL` whose command layer refuses anything outside
+  `CAPABILITY NOOP LOGIN AUTHENTICATE EXAMINE SEARCH FETCH LOGOUT` before it is sent. Nothing is
+  ever marked as read, flagged, moved or deleted.
+- **Search**: `SEARCH SINCE <today − N days>` in the folder (newest first, at most 2000
+  candidates), then only `BODY.PEEK[HEADER.FIELDS (FROM DATE)]` of the candidates, in batches.
+  Messages whose From is not an allowlisted alert sender are never downloaded. Allowlist:
+  `jobalerts-noreply@linkedin.com`, `jobs-listings@linkedin.com`, `jobs-noreply@linkedin.com`, other
+  `@linkedin.com` senders whose display name says "Job Alerts" / "offerte di lavoro", and any
+  address at `jobteaser.com` or a subdomain (JobTeaser does not document its alert sender). The
+  sender check is local because server-side `FROM` search differs between Gmail and Exchange.
+  At most 300 alert messages per run. Anything else (invitations, newsletters, personal mail) is
+  not parsed, stored or sent to the LLM.
 - **Parsing** (HTML with selectolax/lexbor, falling back to the text/plain part; hidden preheaders
   removed). Anchors are grouped by posting, and each group's card container gives the visible lines:
   - *LinkedIn alerts*: links `linkedin.com/comm/jobs/view/<id>/?trackingId=...` →
@@ -198,7 +209,10 @@ so LinkedIn and JobTeaser postings arrive without anything being fetched from th
     (`employment_type`, e.g. Stage/Tirocinio/Internship), location and the `Inizio: ...` line
     (`start_info`). `extra.via = "jobteaser_alert"`.
   - Redirect wrappers whose target sits in a query parameter (`url`, `q`, `u`, `target`,
-    `redirect`, ..., e.g. Outlook safelinks and Google redirects) are unwrapped. Tracking params
+    `redirect`, ..., e.g. Outlook safelinks and Google redirects) or, for LinkedIn/JobTeaser
+    links, in a percent- or base64-encoded path segment are unwrapped offline (a tracking link
+    is never requested). LinkedIn `.../jobs/search/?currentJobId=<id>` links map to the same
+    `/jobs/view/<id>` URL. Tracking params
     (`utm_*`, `trackingId`, `refId`, `trk*`, `midToken`, `otpToken`, `lipi`, `eid`, ...) are
     dropped. Opaque click trackers (an encrypted target, e.g. SendGrid `upn=`) can't be unwrapped,
     so those links are skipped.
@@ -209,15 +223,19 @@ so LinkedIn and JobTeaser postings arrive without anything being fetched from th
   other sources by canonical URL (and dedupe key) as usual.
 - **Not exhaustive**: an alert lists only some postings, so the connector sets
   `exhaustive = False` and `pipeline/closed.py` never closes `email` postings by absence.
-- **Privacy**: credentials come only from the environment (the password is a `SecretStr` and isn't
-  shown in the connector's repr). Logs show counts only (messages, messages with postings,
-  unparsable, postings), never subjects, senders, bodies or posting content. Every failure (connect, login,
-  select, search, fetch) raises a generic `SourceError` (e.g. `email: IMAP login failed`) with the
-  server text and the exception chain suppressed.
-- **Real samples**: the fixtures in `tests/fixtures/email/` are synthetic. Once IMAP is set up,
-  `uv run python scripts/fetch_alert_samples.py` (local only) downloads the latest 3 LinkedIn and 3
-  JobTeaser alerts read-only, anonymizes them and writes `tests/fixtures/email/real_*.eml`.
-  Review those files by hand and run `scripts/check_private.py` on them before committing.
+- **Privacy**: credentials come only from the environment or the macOS keychain (the password is
+  a `SecretStr`; authenticators and the connector never show secrets in their repr). Logs show
+  counts only (alert messages, messages with postings, unparsable, postings), never subjects,
+  senders, bodies or posting content. Connect/select/search/fetch failures raise a generic
+  `SourceError` (e.g. `email: IMAP search failed`) with the server text and the exception chain
+  suppressed. Auth failures pause the source (`SourcePaused`): *login IMAP rifiutato* (password
+  mode, `radar imap set-password`) or *token scaduto* (OAuth2, `radar imap login`); both
+  commands resume the source when they succeed.
+- **Real samples**: the fixtures in `tests/fixtures/email/` are synthetic. `make email-samples`
+  (local only, either auth mode) downloads the latest 3 LinkedIn and 3 JobTeaser alerts
+  read-only, anonymizes them and writes them to the gitignored `private/email_samples/`. After a
+  manual review, `make promote-email-sample FILE=...` re-runs the personal-data checks and copies
+  one file to `tests/fixtures/email/` (it never commits).
 
 ## Closed check (`closed.py`)
 

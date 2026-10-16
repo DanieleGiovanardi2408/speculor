@@ -119,10 +119,13 @@ Dettagli in [docs/RUNNING.md](docs/RUNNING.md).
   sessione linkedin-cli dell'utente sul suo Mac. I Termini di LinkedIn limitano l'accesso
   automatico: Radar non fa scraping di LinkedIn; l'invio con linkedin-cli è locale, confermato
   messaggio per messaggio e sotto la responsabilità dell'utente.
-- **IMAP**: legge solo un'etichetta Gmail (`radar`, impostata con `RADAR_IMAP_FOLDER`) in sola lettura (`EXAMINE`,
-  `BODY.PEEK`): niente viene segnato come letto, spostato, cancellato o contrassegnato. Solo gli
-  alert di LinkedIn e JobTeaser vengono letti; il resto è ignorato e non arriva mai all'LLM. Il
-  contenuto delle e-mail non finisce mai nei log; le credenziali stanno solo nel `.env` locale.
+- **IMAP**: legge solo una cartella/etichetta (`radar`, impostata con `RADAR_IMAP_FOLDER`) di una
+  casella Gmail o Outlook.com, in sola lettura (`EXAMINE`, `BODY.PEEK`): niente viene segnato come
+  letto, spostato, cancellato o contrassegnato (il client IMAP rifiuta quei comandi). Solo gli
+  alert di LinkedIn e JobTeaser vengono scaricati e letti; il resto è ignorato e non arriva mai
+  all'LLM. Il contenuto delle e-mail non finisce mai nei log; le credenziali (password per app
+  Gmail o token OAuth2 Outlook da `radar imap login`) stanno nel portachiavi macOS o nel `.env`
+  locale. Configurazione: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
 - **LLM**: il testo degli annunci e il profilo dell'utente vanno al provider LLM configurato.
 - **GitHub** ospita solo il codice ed esegue la CI, senza segreti e senza dati reali.
 

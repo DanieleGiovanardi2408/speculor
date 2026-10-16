@@ -180,11 +180,13 @@ Radar is a personal tool that reads a small amount of public data, politely:
   LinkedIn; LinkedIn postings arrive through LinkedIn's own alert emails or *Aggiungi da URL*.
   Sending through linkedin-cli uses the user's own session, runs only locally and only after an
   explicit confirmation of each message; it is the user's own responsibility.
-- **Email alerts (IMAP)**: optional. Radar reads only one Gmail label (`radar`, set with `RADAR_IMAP_FOLDER`), opens
-  it read-only (`EXAMINE`) and fetches with `BODY.PEEK`, so nothing is marked as read, moved,
-  deleted or flagged. Only LinkedIn and JobTeaser alert senders are parsed; every other message
-  is ignored and never sent to the LLM. Email content is never logged, and the credentials (a
-  Gmail app password) live only in the local `.env`.
+- **Email alerts (IMAP)**: optional. Radar reads only one folder/label (`radar`, set with
+  `RADAR_IMAP_FOLDER`) of a Gmail or Outlook.com mailbox, opens it read-only (`EXAMINE`) and
+  fetches with `BODY.PEEK`, so nothing is marked as read, moved, deleted or flagged (the IMAP
+  client refuses those commands). Only LinkedIn and JobTeaser alert senders are downloaded and
+  parsed; every other message is ignored and never sent to the LLM. Email content is never
+  logged. Credentials (a Gmail app password, or an Outlook OAuth2 token from `radar imap login`)
+  live in the macOS keychain or the local `.env`. Setup: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
 - **LLM data**: posting text and the user's profile are sent to the configured LLM provider (Groq
   by default) for scoring and drafting. From email, only the content of alert-sender messages is
   used. Use the `fake` provider to keep everything offline.

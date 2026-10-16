@@ -1,8 +1,14 @@
 """JobTeaser (e.g. Luiss career service) offer digests -> RawPosting.
 
 Offer links look like ``https://luiss.jobteaser.com/it/job-offers/<id>-<slug>?utm_...`` where
-``<id>`` is a UUID (current) or a number (older offers). JobTeaser is login-walled: offers are
-never fetched; everything comes from the email.
+``<id>`` is a UUID (current) or a number (older offers). They are canonicalized to
+``https://<host>/<lang>/job-offers/<id>-<slug>`` (tracking params dropped). Links wrapped by a
+click-tracking redirect are unwrapped only when the offer URL is inside the link (query
+parameter or encoded path segment); tracking links are never requested. JobTeaser is
+login-walled: offers are never fetched; everything comes from the email.
+
+Sender: any address at ``jobteaser.com`` or one of its subdomains (the alert/digest sender is
+not documented publicly; e.g. ``notifications@...jobteaser.com``).
 """
 
 from __future__ import annotations
@@ -48,7 +54,8 @@ _META_PREFIX = re.compile(
 
 
 def is_sender(address: str, display_name: str) -> bool:
-    return address.lower().endswith("jobteaser.com")
+    host = address.lower().rsplit("@", 1)[-1]
+    return "@" in address and (host == "jobteaser.com" or host.endswith(".jobteaser.com"))
 
 
 def _is_offer(url: str) -> bool:
