@@ -16,7 +16,8 @@ EM = "—"
 def pack_json(**over: object) -> str:
     base: dict[str, object] = {
         "cover_letter": (
-            "I am available full-time from February-April 2027 for the Data Science Intern role."
+            "Available full-time from February 2027, start flexible until April 2027. "
+            "I am applying for the Data Science Intern role."
             "\n\nYour team builds weekly demand forecasts in Python. In tinybench I designed the "
             "evaluation of LLM agents on spreadsheet tasks.\n\nBest regards,\nMara"
         ),
@@ -61,7 +62,7 @@ def test_fake_end_to_end(session: Session, fake_env: None) -> None:
     assert pack.content_hash == p.content_hash
     assert pack.provider == "fake"
     first_line = pack.cover_letter.splitlines()[0]
-    assert "full-time from February-April 2027" in first_line
+    assert "full-time from February 2027, start flexible until April 2027" in first_line
     assert style.word_count(pack.cover_letter) <= 250
     assert EM not in pack.cover_letter
     assert "tinybench" in pack.cover_letter  # user project
@@ -126,7 +127,9 @@ def test_italian_posting(session: Session, fake_env: None) -> None:
     packs.build_packs(session, run_id=None, limit=5)
     (pack,) = session.exec(select(ApplicationPack)).all()
     assert pack.language == "it"
-    assert pack.cover_letter.startswith("Sono disponibile full-time da febbraio-aprile 2027")
+    assert pack.cover_letter.startswith(
+        "Disponibile full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027"
+    )
     assert all(d.text.startswith("Ciao [NOME]") for d in drafts(session))
 
 

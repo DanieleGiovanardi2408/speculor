@@ -29,7 +29,7 @@ from radar.models import (
 from radar.pipeline.normalize import canonical_url, content_hash, dedupe_key, zone_for
 from radar.timeutil import utcnow
 
-AVAILABILITY_LINE = "Available full-time from February-April 2027."
+AVAILABILITY_LINE = "Available full-time from February 2027, start flexible until April 2027."
 SCORING_MODEL = "openai/gpt-oss-20b"
 DRAFT_MODEL = "openai/gpt-oss-120b"
 
@@ -767,7 +767,7 @@ _HITS: dict[str, list[tuple[str, str, str, str]]] = {
 _WHY = {
     "Alta": (
         "Strong match: {area} internship that uses Python, SQL and ML, in a city on the "
-        "shortlist, start window compatible with February-April 2027."
+        "shortlist, start window compatible with February 2027 (flexible until April)."
     ),
     "Media": (
         "Reasonable match: {area} role with some overlap with the profile; the team "

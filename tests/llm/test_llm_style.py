@@ -67,7 +67,7 @@ def test_cliche_word_boundaries_and_clean_text() -> None:
 
 
 def test_cover_letter_word_limit_trims_at_sentence_and_keeps_signoff() -> None:
-    first = "I am available full-time from February-April 2027 for this role."
+    first = "Available full-time from February 2027, start flexible until April 2027 for this role."
     body = " ".join(f"Sentence number {i} has exactly seven words." for i in range(60))
     text = f"{first}\n\n{body}\n\nBest regards,\nMara"
     fixed, issues = style.fix(text, "cover_letter", "en")
@@ -100,16 +100,20 @@ def test_hard_cut_when_first_sentence_too_long() -> None:
     assert len(fixed) <= 280
 
 
+AV_EN = "Available full-time from February 2027, start flexible until April 2027."
+AV_IT = "Disponibile full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027."
+
+
 def test_cover_letter_availability_first_line() -> None:
-    ok_en = "I am available full-time from February-April 2027.\n\nMore text."
+    ok_en = f"{AV_EN}\n\nMore text."
     assert style.check(ok_en, "cover_letter", "en") == []
-    ok_en_dash = f"I am available full-time from February{EN}April 2027."
+    ok_en_dash = f"Available full{EN}time from February 2027, start flexible until April 2027."
     assert style.has_availability_first_line(ok_en_dash, "en")
-    ok_it = "Sono disponibile full-time da febbraio-aprile 2027.\n\nAltro."
+    ok_it = f"{AV_IT}\n\nAltro."
     assert style.check(ok_it, "cover_letter", "it") == []
-    ok_salutation = "Dear Hiring Team,\nI am available full-time from February-April 2027."
+    ok_salutation = f"Dear Hiring Team,\n{AV_EN}"
     assert style.has_availability_first_line(ok_salutation, "en")
-    bad = "I like your company.\nI am available full-time from February-April 2027."
+    bad = f"I like your company.\n{AV_EN}"
     assert any("availability" in i for i in style.check(bad, "cover_letter", "en"))
 
 
@@ -117,10 +121,12 @@ def test_fix_inserts_availability_line() -> None:
     fixed, issues = style.fix("Dear Team,\nI like your forecasting work.", "cover_letter", "en")
     lines = fixed.splitlines()
     assert lines[0] == "Dear Team,"
-    assert lines[1] == "I am available full-time from February-April 2027."
+    assert lines[1] == "Available full-time from February 2027, start flexible until April 2027."
     assert "availability line inserted at the top" in issues
     fixed_it, _ = style.fix("Mi interessa il vostro lavoro.", "cover_letter", "it")
-    assert fixed_it.startswith("Sono disponibile full-time da febbraio-aprile 2027.")
+    assert fixed_it.startswith(
+        "Disponibile full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027."
+    )
 
 
 def test_fix_never_outputs_em_dash_and_reports_remaining_cliches() -> None:

@@ -4,8 +4,8 @@
 * banned cliches (English + Italian)
 * length limits: cover letter <= 250 words, LinkedIn connection note <= 280 chars,
   LinkedIn message / follow-up / email <= 600 chars (trimmed at a sentence boundary)
-* cover letter: the first line states availability "full-time from February-April 2027"
-  (Italian: "full-time da febbraio-aprile 2027")
+* cover letter: the first line states availability (AVAILABILITY_SENTENCE below):
+  "Available full-time from February 2027, start flexible until April 2027."
 
 ``check`` lists violations; ``fix`` repairs what can be repaired deterministically and returns the
 new text plus notes about edits (trim, inserted line) and any violations still present.
@@ -37,12 +37,12 @@ CHAR_LIMITS: dict[str, int] = {
 }
 
 AVAILABILITY_PHRASE: dict[str, str] = {
-    "en": "full-time from February-April 2027",
-    "it": "full-time da febbraio-aprile 2027",
+    "en": "full-time from February 2027, start flexible until April 2027",
+    "it": "full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027",
 }
 AVAILABILITY_SENTENCE: dict[str, str] = {
-    "en": "I am available full-time from February-April 2027.",
-    "it": "Sono disponibile full-time da febbraio-aprile 2027.",
+    "en": "Available full-time from February 2027, start flexible until April 2027.",
+    "it": "Disponibile full-time da febbraio 2027, con inizio flessibile fino ad aprile 2027.",
 }
 
 EM_DASH = "—"

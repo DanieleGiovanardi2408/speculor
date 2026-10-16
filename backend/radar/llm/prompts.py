@@ -13,6 +13,7 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
+from radar.llm.style import AVAILABILITY_SENTENCE
 from radar.models import Company, Contact, Posting
 from radar.timeutil import today
 
@@ -359,8 +360,8 @@ _COMMON_RULES = """Hard rules for every text:
 
 def _availability_line(language: str) -> str:
     if language == "it":
-        return "Sono disponibile full-time da febbraio-aprile 2027"
-    return "I am available full-time from February-April 2027"
+        return AVAILABILITY_SENTENCE["it"]
+    return AVAILABILITY_SENTENCE["en"]
 
 
 def pack_system(language: str) -> str:
@@ -513,8 +514,8 @@ def _fake_pack(system: str, user: str) -> str:
             else "[CHECK: aggiungi un dettaglio concreto dall'annuncio]."
         )
         cover = (
-            f"Sono disponibile full-time da febbraio-aprile 2027 per il ruolo di {title} "
-            f"presso {company}.\n\n"
+            f"{AVAILABILITY_SENTENCE['it']}\n\n"
+            f"Mi candido per il ruolo di {title} presso {company}. "
             f"{detail_s} Nel progetto {pname} ({pwhat}) ho lavorato su un problema "
             "vicino a questo.\n\n"
             "[CHECK: aggiungi un secondo collegamento concreto tra la tua esperienza "
@@ -527,7 +528,8 @@ def _fake_pack(system: str, user: str) -> str:
             ("Progetto più rilevante?", f"{pname}: {pwhat}."),
             (
                 "Disponibilità e durata?",
-                f"Full-time da febbraio-aprile 2027. Laurea: {graduation}. [CHECK: durata]",
+                "Full-time da febbraio 2027, inizio flessibile fino ad aprile 2027. "
+                f"Laurea: {graduation}. [CHECK: durata]",
             ),
             ("Permesso di lavoro?", f"{citizenship}."),
             (
@@ -555,8 +557,8 @@ def _fake_pack(system: str, user: str) -> str:
             else "[CHECK: add one concrete detail from the posting]."
         )
         cover = (
-            "I am available full-time from February-April 2027 "
-            f"for the {title} role at {company}.\n\n"
+            f"{AVAILABILITY_SENTENCE['en']}\n\n"
+            f"I am applying for the {title} role at {company}. "
             f"{detail_s} In my project {pname} ({pwhat}) I worked on a closely related problem.\n\n"
             "[CHECK: add a second concrete link between your experience and the role.]\n\n"
             f"Best regards,\n{name}"
@@ -567,7 +569,8 @@ def _fake_pack(system: str, user: str) -> str:
             ("Most relevant project?", f"{pname}: {pwhat}."),
             (
                 "Availability, start date and duration?",
-                f"Full-time from February-April 2027. Graduation: {graduation}. [CHECK: duration]",
+                "Full-time from February 2027, start flexible until April 2027. "
+                f"Graduation: {graduation}. [CHECK: duration]",
             ),
             ("Work authorization?", f"{citizenship}."),
             ("Salary expectations?", "[CHECK: salary expectation, the posting states no range]"),
