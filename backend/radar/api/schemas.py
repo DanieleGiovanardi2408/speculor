@@ -128,6 +128,28 @@ class ContactOut(BaseModel):
     role: str | None
     profile_url: str | None
     why: str | None
+    source: str = "manual"  # manual | search
+    source_query: str | None = None
+    needs_review: bool = False
+
+
+class ContactPatch(BaseModel):
+    needs_review: bool | None = None
+
+
+class ContactBudget(BaseModel):
+    month_cost_eur: float
+    monthly_cap_eur: float
+    calls_today: int
+    daily_call_cap: int
+
+
+class ContactSearchOut(BaseModel):
+    stored: int
+    found: int
+    dropped: dict[str, int] = Field(default_factory=dict)
+    contacts: list[ContactOut]
+    budget: ContactBudget
 
 
 class DraftOut(BaseModel):

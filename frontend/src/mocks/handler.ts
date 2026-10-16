@@ -5,6 +5,7 @@ import type {
   ApplicationCreate,
   Contact,
   ContactCreate,
+  ContactPatch,
   Draft,
   DraftCreate,
   DraftForContactBody,
@@ -354,9 +355,49 @@ export async function handleMock(
         role: cb.role ?? null,
         profile_url: cb.profile_url ?? null,
         why: cb.why ?? null,
+        source: "manual",
+        source_query: null,
+        needs_review: false,
       };
       db.contacts.push(c);
       return ok(c, 201);
+    }
+    case "POST /postings/:id/contacts": {
+      // POST /postings/:id/contacts/find: fictional public-search results, marked "da verificare".
+      const p = db.postings.find((x) => x.id === id);
+      if (!p) return notFound();
+      const slug = p.company_name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const people = [
+        { name: "Giulia Esempio", role: "Data Scientist", why: "Alumni Luiss: profilo fittizio per la demo.", q: `"Luiss" "${p.company_name}"` },
+        { name: "Marco Fittizio", role: "Analytics Lead", why: "Possibile responsabile: profilo fittizio per la demo.", q: `"${p.company_name}" manager` },
+      ];
+      const found: Contact[] = people
+        .filter((f) => !db.contacts.some((c) => c.posting_id === id && c.name === f.name))
+        .map((f) => ({
+          id: nextId(),
+          posting_id: id,
+          name: f.name,
+          role: f.role,
+          profile_url: `https://example.com/${slug}/people/${f.name.toLowerCase().replace(" ", "-")}`,
+          why: f.why,
+          source: "search" as const,
+          source_query: f.q,
+          needs_review: true,
+        }));
+      db.contacts.push(...found);
+      return ok({
+        stored: found.length,
+        found: 2,
+        dropped: {},
+        contacts: found,
+        budget: { month_cost_eur: 0.03, monthly_cap_eur: 5, calls_today: 1, daily_call_cap: 10 },
+      });
+    }
+    case "PATCH /contacts/:id": {
+      const c = db.contacts.find((x) => x.id === id);
+      if (!c) return notFound();
+      Object.assign(c, b as ContactPatch);
+      return ok(c);
     }
     case "DELETE /contacts/:id":
       db.contacts = db.contacts.filter((c) => c.id !== id);

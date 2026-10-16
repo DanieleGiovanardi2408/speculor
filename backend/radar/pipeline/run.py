@@ -46,6 +46,7 @@ class PipelineOptions:
     llm: bool = True
     max_score: int = 60
     max_packs: int = 5
+    contacts: bool = True  # public contact search for Alta postings (budget-capped)
     check_closed: bool = True
     check_cap: int = DEFAULT_CHECK_CAP
 
@@ -237,6 +238,16 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
     except Exception as exc:
         session.rollback()
         stats["errors"].append({"source": "llm:packs", "error": error_label(exc)})
+    if not opts.contacts:
+        return
+    try:
+        from radar.llm.contacts import find_contacts_for_alta
+
+        llm["contacts"] = find_contacts_for_alta(session, run_id=run_id)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        stats["errors"].append({"source": "llm:contacts", "error": error_label(exc)})
 
 
 def _print_summary(stats: dict[str, Any], status: str, run_id: int) -> None:

@@ -280,6 +280,9 @@ def contact_out(c: Contact) -> schemas.ContactOut:
         role=c.role,
         profile_url=c.profile_url,
         why=c.why,
+        source=c.source,
+        source_query=c.source_query,
+        needs_review=c.needs_review,
     )
 
 

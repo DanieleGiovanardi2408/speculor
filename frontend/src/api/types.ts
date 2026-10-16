@@ -92,6 +92,26 @@ export interface Contact {
   role: string | null;
   profile_url: string | null;
   why: string | null;
+  /** "manual" (typed by the user) or "search" (found in public search results). */
+  source: "manual" | "search";
+  source_query: string | null;
+  /** Found by the search and not yet checked by the user ("da verificare"). */
+  needs_review: boolean;
+}
+
+export interface ContactBudget {
+  month_cost_eur: number;
+  monthly_cap_eur: number;
+  calls_today: number;
+  daily_call_cap: number;
+}
+
+export interface ContactSearchResult {
+  stored: number;
+  found: number;
+  dropped: Record<string, number>;
+  contacts: Contact[];
+  budget: ContactBudget;
 }
 
 export interface Draft {
@@ -286,6 +306,10 @@ export interface ContactCreate {
   role?: string;
   profile_url?: string;
   why?: string;
+}
+
+export interface ContactPatch {
+  needs_review?: boolean;
 }
 
 export interface DraftCreate {

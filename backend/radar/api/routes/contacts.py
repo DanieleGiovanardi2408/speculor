@@ -1,4 +1,5 @@
-"""Contacts (people to reach out to for a posting). Entered by the user; nothing is sent."""
+"""Contacts (people to reach out to for a posting). Entered by the user or found by the public
+profile search (``POST /api/postings/{id}/contacts/find``); nothing is ever sent."""
 
 from __future__ import annotations
 
@@ -39,3 +40,17 @@ def delete_contact(contact_id: int, session: SessionDep) -> Response:
     session.delete(contact)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/{contact_id}", response_model=schemas.ContactOut)
+def patch_contact(
+    contact_id: int, body: schemas.ContactPatch, session: SessionDep
+) -> schemas.ContactOut:
+    """The user checked a found profile by hand (``needs_review`` false) or flags it again."""
+    contact = get_or_404(session, Contact, contact_id, "Contact")
+    if body.needs_review is not None:
+        contact.needs_review = body.needs_review
+    session.add(contact)
+    session.commit()
+    session.refresh(contact)
+    return contact_out(contact)

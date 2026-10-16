@@ -39,7 +39,7 @@ from radar.timeutil import utcnow
 log = logging.getLogger(__name__)
 
 Purpose = Literal["scoring", "draft"]
-UsagePurpose = Literal["scoring", "pack", "draft"]
+UsagePurpose = Literal["scoring", "pack", "draft", "contacts"]
 SleepFn = Callable[[float], None]
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"

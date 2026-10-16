@@ -1,7 +1,8 @@
 import { useId, useState, type FormEvent } from "react";
-import { useCreateContact, useDeleteContact, useGenerateDraftForContact } from "../api/hooks";
+import { useCreateContact, useDeleteContact, useFindContacts, useGenerateDraftForContact, usePatchContact } from "../api/hooks";
 import type { Contact, Draft, DraftKind } from "../api/types";
 import { DRAFT_KIND_LABEL } from "../lib/labels";
+import { Badge } from "./Badge";
 import { DraftCard } from "./DraftCard";
 import { ExternalLink } from "./ExternalLink";
 import { Icon } from "./Icon";
@@ -99,21 +100,35 @@ function ContactItem({ contact, drafts, postingId }: { contact: Contact; drafts:
   const [kind, setKind] = useState<DraftKind>(contact.profile_url ? "linkedin_connection_note" : "email");
   const del = useDeleteContact(postingId);
   const gen = useGenerateDraftForContact();
+  const review = usePatchContact(postingId);
   const toast = useToast();
   return (
     <li className="card p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 font-medium">
+          <p className="flex flex-wrap items-center gap-2 font-medium">
             <Icon name="user" className="text-ink-muted" />
             {contact.name}
             {contact.role && <span className="font-normal text-ink-muted">· {contact.role}</span>}
+            {contact.needs_review && (
+              <Badge tone="warning" icon="alert">
+                da verificare
+              </Badge>
+            )}
           </p>
           {contact.why && <p className="mt-1 text-sm text-ink-muted">{contact.why}</p>}
           {contact.profile_url && (
             <p className="mt-1 text-sm">
               <ExternalLink href={contact.profile_url}>Profilo pubblico</ExternalLink>
             </p>
+          )}
+          {contact.source === "search" && contact.source_query && (
+            <p className="mt-1 break-words text-xs text-ink-muted">
+              Trovato con la ricerca: <span className="font-mono">{contact.source_query}</span>
+            </p>
+          )}
+          {contact.needs_review && (
+            <p className="mt-1 text-xs text-ink-muted">Trovato in automatico: apri il profilo e controlla che la persona e il ruolo siano giusti prima di scriverle.</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -144,6 +159,22 @@ function ContactItem({ contact, drafts, postingId }: { contact: Contact; drafts:
             <Icon name="sparkles" size={14} />
             {gen.isPending ? "Generazione…" : "Genera messaggio per questo contatto"}
           </button>
+          {contact.needs_review && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              disabled={review.isPending}
+              aria-label={`Segna come verificato ${contact.name}`}
+              onClick={() =>
+                review.mutate(
+                  { id: contact.id, patch: { needs_review: false } },
+                  { onError: (e) => toast.error(`Aggiornamento non riuscito: ${e.message}`) },
+                )
+              }
+            >
+              <Icon name="check" size={14} /> Verificato
+            </button>
+          )}
           <button
             type="button"
             className="btn-danger btn-sm"
@@ -171,10 +202,38 @@ function ContactItem({ contact, drafts, postingId }: { contact: Contact; drafts:
   );
 }
 
+function FindContactsButton({ postingId }: { postingId: number }) {
+  const find = useFindContacts(postingId);
+  const toast = useToast();
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        className="btn-secondary"
+        disabled={find.isPending}
+        onClick={() =>
+          find.mutate(undefined, {
+            onSuccess: (r) => {
+              const spent = `Spesa stimata del mese: ${r.budget.month_cost_eur.toFixed(2)} € su ${r.budget.monthly_cap_eur} €.`;
+              if (r.stored === 0) toast.success(`Nessun nuovo contatto trovato. ${spent}`);
+              else toast.success(`${r.stored === 1 ? "1 contatto trovato" : `${r.stored} contatti trovati`}, da verificare. ${spent}`);
+            },
+            onError: (e) => toast.error(`Ricerca non riuscita: ${e.message}`),
+          })
+        }
+      >
+        <Icon name="search" size={14} /> {find.isPending ? "Ricerca in corso…" : "Cerca contatti"}
+      </button>
+      <p className="text-xs text-ink-muted">Cerca solo profili pubblici (alumni Luiss, ruoli simili, possibile responsabile). Nessun accesso a LinkedIn, nessun messaggio inviato.</p>
+    </div>
+  );
+}
+
 export function ContactsSection({ postingId, contacts, drafts }: { postingId: number; contacts: Contact[]; drafts: Draft[] }) {
   const orphan = drafts.filter((d) => d.contact_id == null || !contacts.some((c) => c.id === d.contact_id));
   return (
     <div className="space-y-4">
+      <FindContactsButton postingId={postingId} />
       {contacts.length === 0 ? (
         <p className="text-sm text-ink-muted">Nessun contatto ancora. Aggiungi una persona da cui farti conoscere: il messaggio lo approvi tu.</p>
       ) : (

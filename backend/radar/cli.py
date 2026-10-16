@@ -21,6 +21,10 @@ app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
 app.add_typer(connectors_app, name="connectors")
+contacts_app = typer.Typer(
+    no_args_is_help=True, help="Public contact search (budget-capped, results need review)."
+)
+app.add_typer(contacts_app, name="contacts")
 console = Console()
 
 
@@ -67,8 +71,12 @@ def run(
     max_score: Annotated[int, typer.Option(help="Max postings to score this run")] = 60,
     max_packs: Annotated[int, typer.Option(help="Max application packs this run")] = 5,
     check_closed: Annotated[bool, typer.Option("--check-closed/--no-check-closed")] = True,
+    contacts: Annotated[
+        bool, typer.Option("--contacts/--no-contacts", help="Public contact search (capped)")
+    ] = True,
 ) -> None:
-    """Run the daily pipeline: collect, dedupe, check closed, filter, diff, score, packs, report."""
+    """Run the daily pipeline: collect, dedupe, check closed, filter, diff, score, packs,
+    contacts, report."""
     from radar.pipeline.run import PipelineOptions, run_pipeline
 
     opts = PipelineOptions(
@@ -77,6 +85,7 @@ def run(
         max_score=max_score,
         max_packs=max_packs,
         check_closed=check_closed,
+        contacts=contacts,
     )
     result = run_pipeline(opts)
     console.print(result.summary_line())
@@ -236,6 +245,63 @@ def config_pull() -> None:
         if value is not None and not path.exists():
             path.write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), "utf-8")
             console.print(f"wrote {name}")
+
+
+@contacts_app.command("find")
+def contacts_find(
+    posting_id: Annotated[int | None, typer.Option(help="Search contacts for one posting")] = None,
+    alta: Annotated[
+        bool, typer.Option("--alta", help="Alta postings without contacts (daily limit)")
+    ] = False,
+    drafts: Annotated[
+        bool, typer.Option(help="Also draft a connection note and a message per new contact")
+    ] = False,
+) -> None:
+    """Find 2-3 public profiles per posting. Stored as "da verificare"; nothing is sent."""
+    from sqlmodel import col, select
+
+    from radar.db import session_scope
+    from radar.llm import contacts as finder
+    from radar.models import Contact
+
+    if (posting_id is None) == (not alta):
+        console.print("[red]Use either --posting-id ID or --alta.[/red]")
+        raise typer.Exit(2)
+    with session_scope() as s:
+        start = max((c.id or 0 for c in s.exec(select(Contact)).all()), default=0)
+        try:
+            if posting_id is not None:
+                stats = finder.find_contacts(s, posting_id)
+            else:
+                stats = finder.find_contacts_for_alta(s)
+        except finder.BudgetExceeded as exc:
+            console.print(f"[yellow]Stopped: {exc}[/yellow]")
+            raise typer.Exit(1) from exc
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1) from exc
+        console.print(stats)
+        if drafts:
+            from radar.llm.packs import draft_outreach_for_contact
+
+            new = s.exec(select(Contact).where(col(Contact.id) > start)).all()
+            made = 0
+            for c in new:
+                if c.id is not None and c.posting_id is not None:
+                    made += len(draft_outreach_for_contact(s, c.posting_id, c.id))
+                    s.commit()
+            console.print(f"{made} drafts created (review them in Approvazioni).")
+    console.print("Review the contacts in the web app: they are marked 'da verificare'.")
+
+
+@contacts_app.command("budget")
+def contacts_budget() -> None:
+    """Estimated contact-search spend this month and calls today."""
+    from radar.db import session_scope
+    from radar.llm.contacts import budget_status
+
+    with session_scope() as s:
+        console.print(budget_status(s).as_dict())
 
 
 if __name__ == "__main__":
