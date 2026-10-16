@@ -296,11 +296,15 @@ def run_pipeline(
                     built: list[Connector] = []
                     try:
                         from radar.config import load_yaml_config
+                        from radar.seed import sync_companies_config
 
-                        built = build_connectors(
-                            client, load_yaml_config("companies"), opts.sources
-                        )
+                        companies_cfg = load_yaml_config("companies")
+                        built = build_connectors(client, companies_cfg, opts.sources)
+                        # company rows (sector, ATS) before collecting, so postings link to them
+                        sync_companies_config(session, companies_cfg)
+                        session.commit()
                     except Exception as exc:
+                        session.rollback()
                         stats["errors"].append({"source": "config", "error": error_label(exc)})
                     selected = _select(built, opts, enabled)
                     n_connectors = len(selected)
