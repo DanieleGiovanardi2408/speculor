@@ -13,6 +13,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   JobTeaser senders only); manual add by URL; normalization and de-duplication; closed-posting
   detection; daily diff via change events. SmartRecruiters and LinkedIn guest connectors exist
   but fetch nothing (their robots.txt disallows generic agents).
+- Email alerts work with Outlook.com/Hotmail (OAuth2 device-code login with the user's own Entra
+  app, `AUTHENTICATE XOAUTH2`, token in the macOS keychain: `radar imap login`) as well as Gmail
+  (app password from `.env` or the keychain: `radar imap set-password`); `radar imap status` /
+  `check` / `logout`. Read-only enforced by an IMAP client that refuses mutating commands; only
+  From headers are read before downloading allowlisted alerts. Real samples go to the gitignored
+  `private/email_samples/` and are promoted to fixtures by hand (`make promote-email-sample`).
 - Deterministic hard filters driven by `config/rules.yaml`, with the rule and triggering text
   stored for every hit and one-click restore with undo.
 - Post-graduation track: graduate programmes and full-time roles starting after graduation are

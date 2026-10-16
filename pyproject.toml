@@ -19,6 +19,8 @@ dependencies = [
     "python-dotenv>=1.0",
     "psycopg[binary]>=3.2",
     "pyjwt[crypto]>=2.9",
+    "msal>=1.31",
+    "keyring>=25",
 ]
 
 [project.scripts]
@@ -64,5 +66,5 @@ packages = ["radar"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["selectolax.*"]
+module = ["selectolax.*", "msal.*"]
 ignore_missing_imports = true

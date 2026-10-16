@@ -20,7 +20,8 @@ define serve_both
 endef
 
 .PHONY: help install dev dev-real seed test lint fmt run-pipeline report send send-dry build \
-	schedule-install schedule-remove schedule-status schedule-run-now clean
+	schedule-install schedule-remove schedule-status schedule-run-now \
+	email-samples promote-email-sample clean
 
 help: ## List available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -89,6 +90,13 @@ schedule-status: ## Show whether the daily job is installed and the last log lin
 
 schedule-run-now: ## Trigger the daily job immediately (output in logs/daily.log)
 	./scripts/schedule.sh run-now
+
+email-samples: ## Download a few real alert emails, anonymized, into private/email_samples/ (review them!)
+	$(UV) run python scripts/fetch_alert_samples.py
+
+promote-email-sample: ## Copy ONE reviewed sample into tests/fixtures/email/ (FILE=... [NAME=...])
+	@test -n "$(FILE)" || { echo "usage: make promote-email-sample FILE=private/email_samples/<file>.eml [NAME=...]"; exit 2; }
+	$(UV) run python scripts/promote_email_sample.py "$(FILE)" $(if $(NAME),--name "$(NAME)",)
 
 clean: ## Remove caches, build output and the demo DB (keeps data/radar.db)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov frontend/dist data/demo.db

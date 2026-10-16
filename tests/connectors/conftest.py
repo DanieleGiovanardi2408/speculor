@@ -33,6 +33,12 @@ def _no_real_imap(monkeypatch: pytest.MonkeyPatch) -> None:
     """A developer's .env may configure IMAP; connector tests must not pick it up."""
     from radar.config import get_settings
 
-    for name in ("RADAR_IMAP_HOST", "RADAR_IMAP_USER", "RADAR_IMAP_PASSWORD"):
+    for name in (
+        "RADAR_IMAP_HOST",
+        "RADAR_IMAP_USER",
+        "RADAR_IMAP_PASSWORD",
+        "RADAR_IMAP_OAUTH_CLIENT_ID",
+    ):
         monkeypatch.setenv(name, "")
+    monkeypatch.setenv("RADAR_IMAP_AUTH", "auto")
     get_settings.cache_clear()

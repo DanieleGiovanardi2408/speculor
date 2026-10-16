@@ -1,8 +1,10 @@
 """LinkedIn job-alert emails -> RawPosting (content of the email only; LinkedIn is never fetched).
 
 Job links look like ``https://www.linkedin.com/comm/jobs/view/<id>/?trackingId=...&refId=...``
-and are canonicalized to ``https://www.linkedin.com/jobs/view/<id>`` so they de-duplicate
-against manual and LinkedIn postings via ``canonical_url``.
+(or ``.../jobs/search/?currentJobId=<id>``, possibly wrapped by Outlook safelinks) and are
+canonicalized to ``https://www.linkedin.com/jobs/view/<id>``: the same form that
+``normalize.canonical_url`` and the LinkedIn guest connector produce (no trailing slash, no
+tracking params), so alert postings de-duplicate against LinkedIn and manual postings.
 """
 
 from __future__ import annotations
@@ -25,13 +27,23 @@ from radar.schemas import RawPosting
 
 VIA = "linkedin_alert"
 JOB_URL = "https://www.linkedin.com/jobs/view/{id}"
+#: LinkedIn addresses that send job alerts / job recommendations.
 SENDERS = (
     "jobalerts-noreply@linkedin.com",
     "jobs-listings@linkedin.com",
     "jobs-noreply@linkedin.com",
 )
+#: display names (any language seen so far) of other @linkedin.com job-alert senders
+_ALERT_NAMES = re.compile(
+    r"job alerts?|jobs? alert|offerte di lavoro|avvisi? (di )?offert|alert (di )?offert", re.I
+)
 _VIEW_RE = re.compile(
     r"^https?://(?:[a-z]{2,3}\.|www\.)?linkedin\.com/(?:comm/)?jobs/view/(?:[^/?#]*-)?(\d{6,})",
+    re.I,
+)
+_CURRENT_JOB_RE = re.compile(
+    r"^https?://(?:[a-z]{2,3}\.|www\.)?linkedin\.com/(?:comm/)?jobs/[^?#]*\?(?:[^#]*&)?"
+    r"currentJobId=(\d{6,})",
     re.I,
 )
 
@@ -40,19 +52,24 @@ def is_sender(address: str, display_name: str) -> bool:
     address = address.lower()
     if address in SENDERS:
         return True
-    return address.endswith("@linkedin.com") and "job alert" in display_name.lower()
+    return address.endswith("@linkedin.com") and bool(_ALERT_NAMES.search(display_name))
+
+
+def _job_id(url: str) -> str | None:
+    m = _VIEW_RE.match(url) or _CURRENT_JOB_RE.match(url)
+    return m.group(1) if m else None
 
 
 def _is_job(url: str) -> bool:
-    return bool(_VIEW_RE.match(url))
+    return _job_id(url) is not None
 
 
 def job_key(href: str) -> tuple[str, str] | None:
-    url = unwrap_url(href, _is_job)
-    m = _VIEW_RE.match(url)
-    if not m:
+    """(job id, canonical ``/jobs/view/<id>`` URL) of a LinkedIn job link, else None."""
+    job_id = _job_id(unwrap_url(href, _is_job))
+    if job_id is None:
         return None
-    return m.group(1), JOB_URL.format(id=m.group(1))
+    return job_id, JOB_URL.format(id=job_id)
 
 
 def _company_location(rest: list[str]) -> tuple[str, str | None]:

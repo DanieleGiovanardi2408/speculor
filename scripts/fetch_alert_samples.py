@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""LOCAL ONLY: download a few real alert emails, anonymize them, write test fixtures.
+"""LOCAL ONLY: download a few real alert emails, anonymize them into a gitignored review folder.
 
-Usage (needs RADAR_IMAP_HOST/USER/PASSWORD in .env)::
+Usage (the same RADAR_IMAP_* setup as the "email" source: Gmail app password or Outlook OAuth2,
+see docs/RUNNING.md)::
 
+    make email-samples                     # = uv run python scripts/fetch_alert_samples.py
     uv run python scripts/fetch_alert_samples.py [--per-kind 3] [--redact "Some Name" ...]
 
-It connects READ-ONLY (``select(readonly=True)`` + ``BODY.PEEK[]``: nothing is marked read,
-moved or deleted), takes the latest ``--per-kind`` LinkedIn and JobTeaser alerts, anonymizes them
-and writes ``tests/fixtures/email/real_<kind>_<n>.eml``. Only counts are printed.
+It connects READ-ONLY (EXAMINE + ``BODY.PEEK``, through the same read-only client as the
+connector: nothing is marked read, moved or deleted), takes the latest ``--per-kind`` LinkedIn and
+JobTeaser alerts from the configured folder, anonymizes them and writes
+``private/email_samples/real_<kind>_<n>.eml`` (gitignored). Only counts are printed.
 
-Anonymization (best effort: REVIEW EVERY FILE BEFORE COMMITTING, then run
-``scripts/check_private.py`` on it):
+Nothing lands in ``tests/`` automatically. Review each file by hand, then promote it:
+``make promote-email-sample FILE=private/email_samples/real_linkedin_1.eml`` (runs
+``scripts/check_private.py`` and copies it to ``tests/fixtures/email/``).
+
+Anonymization (best effort, hence the manual review):
 
 * only the text/plain and text/html parts are kept (no images/attachments); headers are rebuilt
   (From kept since it is the alert service, To -> ``Test User <test.user@example.com>``);
@@ -43,14 +49,15 @@ from check_private import PHONE_RES, load_forbidden_strings  # noqa: E402
 from radar.config import get_settings  # noqa: E402
 from radar.connectors.base import SourceError  # noqa: E402
 from radar.connectors.email_alerts import (  # noqa: E402
+    EmailAlertsConnector,
+    alert_ids,
     fetch_message,
-    open_mailbox,
-    search_ids,
 )
-from radar.connectors.email_parsers import classify, linkedin  # noqa: E402
+from radar.connectors.email_parsers import classify  # noqa: E402
 from radar.connectors.email_parsers.common import message_bodies  # noqa: E402
+from radar.connectors.status import SourcePaused  # noqa: E402
 
-OUT_DIR = REPO_ROOT / "tests" / "fixtures" / "email"
+OUT_DIR = REPO_ROOT / "private" / "email_samples"  # gitignored: review before promoting
 FAKE_ADDR = "test.user@example.com"
 FAKE_NAME = "Test User"
 KEEP_DOMAINS = ("linkedin.com", "jobteaser.com", "example.com")
@@ -155,37 +162,39 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     s = get_settings()
-    password = s.imap_password.get_secret_value() if s.imap_password is not None else ""
-    if not (s.imap_host and s.imap_user and password):
-        print("RADAR_IMAP_HOST, RADAR_IMAP_USER and RADAR_IMAP_PASSWORD must be set.")
+    connector = EmailAlertsConnector.from_settings(s)
+    if connector is None:
+        print("IMAP not configured: run `uv run radar imap status` (docs/RUNNING.md).")
         return 2
     from datetime import date, timedelta
 
     since = date.today() - timedelta(days=max(s.imap_since_days, 60))
-    wanted = {"linkedin": [*linkedin.SENDERS], "jobteaser": ["jobteaser.com"]}
     written = {"linkedin": 0, "jobteaser": 0}
     args.out.mkdir(parents=True, exist_ok=True)
     try:
-        with open_mailbox(s.imap_host, s.imap_port, s.imap_user, password, s.imap_folder) as conn:
-            for kind, senders in wanted.items():
-                for msg_id in search_ids(conn, senders, since):
+        with connector.mailbox() as conn:
+            for kind in written:
+                for msg_id, _ in alert_ids(conn, since, kinds=[kind], limit=args.per_kind * 3):
                     if written[kind] >= args.per_kind:
                         break
                     msg = fetch_message(conn, msg_id)
                     if msg is None or classify(msg) != kind:
                         continue
                     written[kind] += 1
-                    clean = anonymize(msg, s.imap_user, args.redact)
+                    clean = anonymize(msg, connector.user, args.redact)
                     path = args.out / f"real_{kind}_{written[kind]}.eml"
                     path.write_bytes(clean.as_bytes())
+    except SourcePaused as exc:
+        print(f"paused: {exc.reason}. {exc.action}")
+        return 1
     except SourceError as exc:
         print(f"error: {exc}")
         return 1
+    shown = args.out.relative_to(REPO_ROOT) if args.out.is_relative_to(REPO_ROOT) else args.out
     print(
-        f"wrote {written['linkedin']} LinkedIn and {written['jobteaser']} JobTeaser samples "
-        f"to {args.out.relative_to(REPO_ROOT) if args.out.is_relative_to(REPO_ROOT) else args.out}"
+        f"wrote {written['linkedin']} LinkedIn, {written['jobteaser']} JobTeaser samples -> {shown}"
     )
-    print("Review every real_*.eml by hand, then: python scripts/check_private.py <files>")
+    print("Review every file by hand, then: make promote-email-sample FILE=<file>")
     return 0
 
 
