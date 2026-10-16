@@ -368,6 +368,27 @@ def zone_for(code: str | None) -> str:
     return "Altro"
 
 
+# JobTeaser offer pages: any school portal or www host, any locale, optional title slug.
+# luiss.jobteaser.com/it/job-offers/<id>-<slug> and www.jobteaser.com/en/job-offers/<id> are the
+# same offer, so they share one canonical URL (email alerts, the jobteaser connector, the seed).
+_JOBTEASER_OFFER = re.compile(
+    r"^/(?:[a-z]{2}(?:-[a-z]{2})?/)?job-offers/"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+)(?:-[^/]*)?/?$",
+    re.I,
+)
+JOBTEASER_CANONICAL = "https://www.jobteaser.com/en/job-offers/{id}"
+
+
+def jobteaser_offer_id(url: str) -> str | None:
+    """Lowercased JobTeaser offer id (UUID or number) from an offer URL, else None."""
+    parts = urlsplit(url.strip())
+    host = parts.netloc.lower()
+    if not (host == "jobteaser.com" or host.endswith(".jobteaser.com")):
+        return None
+    m = _JOBTEASER_OFFER.match(parts.path)
+    return m.group(1).lower() if m else None
+
+
 _TRACKING_PARAMS = re.compile(r"^(utm_|gh_src|lever-|source|ref|trk|refId|trackingId|src$)", re.I)
 
 
@@ -380,6 +401,9 @@ def canonical_url(url: str) -> str:
         m = re.search(r"/jobs/view/(?:[^/]*-)?(\d+)", parts.path)
         if m:
             return f"https://www.linkedin.com/jobs/view/{m.group(1)}"
+    offer_id = jobteaser_offer_id(url)
+    if offer_id:
+        return JOBTEASER_CANONICAL.format(id=offer_id)
     query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if not _TRACKING_PARAMS.match(k)])
     path = parts.path.rstrip("/") or "/"
     return urlunsplit(("https", host, path, query, ""))

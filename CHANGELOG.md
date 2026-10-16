@@ -8,6 +8,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- JobTeaser (Luiss career service) connector, local Mac only: `make jobteaser-login` once (the
+  session stays in a dedicated Chromium profile), headless daily fetch one page at a time,
+  robots.txt checked with wildcard semantics, pause on expired session or block page, offer
+  pages for alert/seed offers (description, closing date), shared canonical URL with alert
+  emails; `make jobteaser-test` and `scripts/jobteaser_probe.py` for calibration.
 - Daily pipeline: collection from Greenhouse, Lever, Ashby and Workday (public CXS endpoint, best
   effort, robots.txt checked); optional read-only IMAP email alerts (one Gmail label, LinkedIn and
   JobTeaser senders only); manual add by URL; normalization and de-duplication; closed-posting

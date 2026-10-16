@@ -5,9 +5,9 @@
   ``changed`` event (raw_text changes are recorded as "content changed", never the text); a
   closed posting that is seen again is ``reopened``.
 * New posting: ``new`` event. If the same canonical URL (any source) or the same dedupe key
-  (other source) already exists, the group's primary is chosen (seed > ATS > manual >
-  linkedin, then earliest) and the others get ``duplicate_of`` = primary. Duplicates are kept
-  but excluded from new-counts, the report and scoring.
+  (other source) already exists, the group's primary is chosen (seed > ATS > manual/jobteaser >
+  other > linkedin, then earliest) and the others get ``duplicate_of`` = primary. Duplicates are
+  kept but excluded from new-counts, the report and scoring.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from radar.pipeline.normalize import (
     content_hash,
     country_code,
     dedupe_key,
+    jobteaser_offer_id,
     normalize_company,
     zone_for,
 )
@@ -58,8 +59,8 @@ def source_rank(source: str) -> int:
         return 0
     if source in ATS_SOURCES:
         return 1
-    if source == "manual":
-        return 2
+    if source in ("manual", "jobteaser"):
+        return 2  # jobteaser: the offer page itself (full description), better than its alert
     if source == "linkedin":
         return 4
     return 3
@@ -199,6 +200,13 @@ def _valid_key(key: str) -> bool:
 
 def _dedupe(session: Session, posting: Posting, run_id: int | None, now: datetime) -> None:
     conds = [col(Posting.canonical_url) == posting.canonical_url]
+    jt_id = jobteaser_offer_id(posting.url)
+    if jt_id:
+        # Rows stored before JobTeaser URLs were canonicalized keep host/locale/slug.
+        conds.append(col(Posting.canonical_url).like(f"https://%jobteaser.com/%job-offers/{jt_id}"))
+        conds.append(
+            col(Posting.canonical_url).like(f"https://%jobteaser.com/%job-offers/{jt_id}-%")
+        )
     if _valid_key(posting.dedupe_key):
         conds.append(
             (col(Posting.dedupe_key) == posting.dedupe_key)
@@ -244,6 +252,6 @@ def _via(raw: RawPosting) -> str:
     alert = raw.extra.get("via")
     if raw.source == "linkedin" or alert == "linkedin_alert":
         return "LinkedIn"
-    if alert == "jobteaser_alert":
+    if raw.source == "jobteaser" or alert == "jobteaser_alert":
         return "Career Service Luiss"
     return "Sito aziendale"

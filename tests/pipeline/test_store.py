@@ -125,3 +125,62 @@ def test_duplicate_reopens_closed_primary(session: Session) -> None:
     kinds = [e.kind for e in events(session, seed.id or 0)]
     assert "reopened" in kinds
     assert session.exec(select(Posting)).all()
+
+
+JT_ID = "0a1b2c3d-1111-4a2a-9f1d-00000000abcd"
+
+
+def test_jobteaser_connector_dedupes_with_alert_and_legacy_seed(session: Session) -> None:
+    # A seed row stored before JobTeaser URLs were canonicalized (old canonical with locale/slug).
+    seed = Posting(
+        uid="seed:x",
+        source="seed",
+        external_id="x",
+        url=f"https://www.jobteaser.com/en/job-offers/{JT_ID}-acme-data-intern",
+        canonical_url=f"https://www.jobteaser.com/en/job-offers/{JT_ID}-acme-data-intern",
+        title="Data Intern",
+        company_name="Acme",
+        content_hash="h",
+        dedupe_key="acme|data intern|",
+        first_seen=T0,
+        last_seen=T0,
+    )
+    session.add(seed)
+    session.flush()
+    alert = upsert_raw(
+        session,
+        raw(
+            f"jobteaser:{JT_ID}",
+            source="email",
+            url=f"https://luiss.jobteaser.com/it/job-offers/{JT_ID}-acme-data-intern",
+            extra={"via": "jobteaser_alert"},
+        ),
+        now=T0,
+    ).posting
+    conn = upsert_raw(
+        session,
+        raw(JT_ID, source="jobteaser", url=f"https://luiss.jobteaser.com/it/job-offers/{JT_ID}"),
+        now=T1,
+    ).posting
+    assert alert.canonical_url == conn.canonical_url
+    assert alert.duplicate_of == seed.id and conn.duplicate_of == seed.id
+    assert conn.via == alert.via == "Career Service Luiss"
+
+
+def test_jobteaser_connector_becomes_primary_over_its_alert(session: Session) -> None:
+    alert = upsert_raw(
+        session,
+        raw(
+            f"jobteaser:{JT_ID}",
+            source="email",
+            url=f"https://luiss.jobteaser.com/it/job-offers/{JT_ID}-x",
+            extra={"via": "jobteaser_alert"},
+        ),
+        now=T0,
+    ).posting
+    conn = upsert_raw(
+        session,
+        raw(JT_ID, source="jobteaser", url=f"https://luiss.jobteaser.com/it/job-offers/{JT_ID}"),
+        now=T1,
+    ).posting
+    assert conn.duplicate_of is None and alert.duplicate_of == conn.id

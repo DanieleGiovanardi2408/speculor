@@ -20,13 +20,14 @@ define serve_both
 endef
 
 .PHONY: help install dev dev-real seed test lint fmt run-pipeline report send send-dry build \
-	schedule-install schedule-remove schedule-status schedule-run-now clean
+	schedule-install schedule-remove schedule-status schedule-run-now clean \
+	jobteaser-login jobteaser-test
 
 help: ## List available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install: ## Install backend (uv) and frontend (pnpm) deps, enable pre-commit hooks
-	$(UV) sync
+	$(UV) sync --all-extras
 	$(PNPM) -C frontend install
 	$(UV) run pre-commit install
 
@@ -74,6 +75,14 @@ send: ## Send APPROVED LinkedIn drafts one by one, each after your confirmation 
 
 send-dry: ## Same as send, but linkedin-cli runs with --dry-run and nothing changes
 	$(UV) run radar send --dry-run
+
+jobteaser-login: ## Log in to JobTeaser (Luiss) by hand in a dedicated Chromium profile (local only)
+	$(UV) sync --extra browser
+	$(UV) run playwright install chromium
+	$(REAL_ENV) $(UV) run radar jobteaser login
+
+jobteaser-test: ## Check the JobTeaser session: one listing page + one offer page, counts only
+	$(REAL_ENV) $(UV) run radar jobteaser test
 
 build: ## Build the frontend for production (frontend/dist)
 	$(PNPM) -C frontend build

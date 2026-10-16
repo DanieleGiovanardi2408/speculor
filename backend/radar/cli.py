@@ -21,6 +21,10 @@ app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
 app.add_typer(connectors_app, name="connectors")
+jobteaser_app = typer.Typer(
+    no_args_is_help=True, help="JobTeaser (Luiss) browser session, local Mac only."
+)
+app.add_typer(jobteaser_app, name="jobteaser")
 console = Console()
 
 
@@ -178,6 +182,55 @@ def connectors_resume(source: str) -> None:
     with session_scope() as s:
         ok = resume(s, source)
     console.print("Ripresa." if ok else "Fonte non in pausa.")
+
+
+@jobteaser_app.command("login")
+def jobteaser_login() -> None:
+    """Open Chromium on the JobTeaser sign-in page; log in by hand, then close the window."""
+    from radar.connectors.jobteaser import DEFAULT_BASE_URL, DEFAULT_LOCALE, load_config
+    from radar.connectors.jobteaser_browser import login
+
+    cfg = load_config()
+    console.print(
+        "Accedi con l'account Luiss nella finestra di Chromium, poi chiudila. "
+        "La sessione resta solo nel profilo locale."
+    )
+    login(
+        get_settings().jobteaser_profile,
+        str(cfg.get("base_url") or DEFAULT_BASE_URL),
+        str(cfg.get("locale") or DEFAULT_LOCALE),
+    )
+    console.print("Finestra chiusa. Prova con `make jobteaser-test`.")
+
+
+@jobteaser_app.command("test")
+def jobteaser_test() -> None:
+    """Check the session and parse one listing page and one offer page (counts only)."""
+    import json
+
+    from radar.connectors.base import SourceError
+    from radar.connectors.http import PoliteClient
+    from radar.connectors.jobteaser import from_settings, smoke_test
+    from radar.connectors.status import SourcePaused
+
+    settings = get_settings()
+    with PoliteClient.from_settings() as client:
+        conn = from_settings(client, settings)
+        if conn is None:
+            console.print("Profilo browser assente: esegui prima `make jobteaser-login`.")
+            raise typer.Exit(1)
+        browser = conn.browser_factory()
+        try:
+            report = smoke_test(conn, browser)
+        except SourcePaused as exc:
+            console.print(f"In pausa: {exc.reason}. {exc.action}")
+            raise typer.Exit(2) from exc
+        except SourceError as exc:
+            console.print(f"Errore: {type(exc).__name__}")
+            raise typer.Exit(1) from exc
+        finally:
+            browser.close()
+    console.print(json.dumps(report, indent=2, ensure_ascii=False))
 
 
 @db_app.command("copy")

@@ -21,6 +21,11 @@ dependencies = [
     "pyjwt[crypto]>=2.9",
 ]
 
+[project.optional-dependencies]
+# Local Mac only (JobTeaser connector): `uv sync --extra browser && uv run playwright install
+# chromium`. CI never installs it; tests use fake pages.
+browser = ["playwright>=1.47"]
+
 [project.scripts]
 radar = "radar.cli:app"
 
@@ -64,5 +69,5 @@ packages = ["radar"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["selectolax.*"]
+module = ["selectolax.*", "playwright.*"]
 ignore_missing_imports = true

@@ -25,6 +25,14 @@ DEFAULT_SOURCES = (
 )
 
 
+def default_sources() -> tuple[str, ...]:
+    """DEFAULT_SOURCES, plus "jobteaser" once its browser profile exists on this machine."""
+    from radar.config import get_settings
+    from radar.connectors.jobteaser import profile_ready
+
+    return (*DEFAULT_SOURCES, "jobteaser") if profile_ready(get_settings()) else DEFAULT_SOURCES
+
+
 def weekly_goal(session: Session) -> int:
     value: Any = get_setting("weekly_goal", DEFAULT_WEEKLY_GOAL, session=session)
     try:
@@ -34,7 +42,7 @@ def weekly_goal(session: Session) -> int:
 
 
 def sources_enabled(session: Session) -> dict[str, bool]:
-    out = dict.fromkeys(DEFAULT_SOURCES, True)
+    out = dict.fromkeys(default_sources(), True)
     stored: Any = get_setting("sources_enabled", None, session=session)
     if isinstance(stored, dict):
         out.update({str(k): bool(v) for k, v in stored.items()})

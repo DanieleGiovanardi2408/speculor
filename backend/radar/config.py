@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     imap_folder: str = Field(default="radar", validation_alias="RADAR_IMAP_FOLDER")
     imap_since_days: int = Field(default=14, validation_alias="RADAR_IMAP_SINCE_DAYS")
 
+    # JobTeaser (Luiss career service) via the user's own browser session, local Mac only.
+    # The persistent Chromium profile holds the session: created by `make jobteaser-login`,
+    # never inside the repo, never exported. The "jobteaser" source exists only if it exists.
+    jobteaser_profile: Path = Field(
+        default=Path.home() / "Library" / "Application Support" / "speculor" / "jobteaser-profile",
+        validation_alias="RADAR_JOBTEASER_PROFILE",
+    )
+
     # Local sending
     linkedin_bin: str = Field(default="linkedin", validation_alias="RADAR_LINKEDIN_BIN")
 
