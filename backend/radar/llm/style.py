@@ -77,6 +77,14 @@ CLICHES_EN: tuple[str, ...] = (
     "to whom it may concern",
     "delve",
     "cutting-edge",
+    "I am drawn to",
+    "I'm drawn to",
+    "I am eager to",
+    "eager to contribute",
+    "I look forward to",
+    "thank you for considering",
+    "exactly the mix",
+    "exactly the exposure",
 )
 CLICHES_IT: tuple[str, ...] = (
     "con la presente",
@@ -98,6 +106,11 @@ CLICHES_IT: tuple[str, ...] = (
     "fortemente motivato",
     "fortemente motivata",
     "fare la differenza",
+    "sono motivato",
+    "sono motivata",
+    "motivato a contribuire",
+    "motivata a contribuire",
+    "mi piacerebbe molto",
 )
 _CLICHE_RES: list[tuple[str, re.Pattern[str]]] = [
     (c, re.compile(rf"(?<!\w){re.escape(c.lower())}(?!\w)")) for c in CLICHES_EN + CLICHES_IT
@@ -114,7 +127,9 @@ _SALUTATION = re.compile(
 
 def fix_dashes(text: str) -> str:
     """Remove em dashes and en dashes used as dashes. Never returns U+2014."""
-    t = text
+    # Non-breaking / soft hyphens and the minus sign look like "-" but break copy-paste.
+    t = text.replace("\u2011", "-").replace("\u2010", "-").replace("\u2212", "-")
+    t = t.replace("\u00ad", "")
     # Line-leading dash used as a bullet.
     t = re.sub(rf"(?m)^([ \t]*){_ANY_DASH}[ \t]*", r"\1- ", t)
     # Numeric ranges: 2026-2027, 10-12.
@@ -240,6 +255,19 @@ def trim_to_limit(
     return f"{best}{sep}{signoff}".strip()
 
 
+def _separate_availability(text: str, language: str) -> str:
+    """Put the availability sentence on its own line, followed by a blank line."""
+    sentence = AVAILABILITY_SENTENCE["it" if language == "it" else "en"]
+    idx = text.find(sentence)
+    if idx < 0:
+        return text
+    end = idx + len(sentence)
+    rest = text[end:].lstrip(" \t")
+    if not rest or rest.startswith("\n\n"):
+        return text
+    return f"{text[:end]}\n\n{rest.lstrip()}"
+
+
 def _insert_availability(text: str, language: str) -> str:
     sentence = AVAILABILITY_SENTENCE["it" if language == "it" else "en"]
     lines = text.strip().splitlines()
@@ -258,6 +286,8 @@ def fix(text: str, kind: str, language: str) -> tuple[str, list[str]]:
     if kind == "cover_letter" and t and not has_availability_first_line(t, language):
         t = _insert_availability(t, language)
         notes.append("availability line inserted at the top")
+    if kind == "cover_letter" and t:
+        t = _separate_availability(t, language)
     measure = _measure(kind)
     if measure is not None:
         fn, limit = measure

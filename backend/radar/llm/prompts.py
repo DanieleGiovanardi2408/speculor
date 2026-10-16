@@ -420,7 +420,18 @@ never asks for a job or a referral.
 linkedin_message: at most 550 characters, starts "{greet}", same rules as the note, a bit more
 context about the candidate (one concrete project), ONE specific question.
 followup: at most 550 characters, starts "{greet}", sent 14 days after applying: names the role,
-adds one new concrete point, asks politely about the timeline."""
+recalls ONE concrete project or experience that is already in CANDIDATE and fits the role (never
+claim new work done "since" applying; if you want to add news, write "[CHECK: novita da
+aggiungere]"), asks politely about the timeline.
+Fact discipline (most important rule): every claim about the candidate must be traceable to a
+line in CANDIDATE, with the same scope. Do not upgrade or generalise: scraping is not NLP, a
+listed skill is not a project, "two pilot gyms" stays two pilot gyms. Never invent projects,
+results, numbers or plans. When unsure, write a [CHECK: ...] marker instead.
+Style: sound like a capable person writing quickly and precisely. Never use: "I am drawn to",
+"I am eager to", "eager to contribute", "I look forward to", "thank you for considering",
+"exactly the", "sono motivato", "motivato a contribuire", "mi piacerebbe molto". The cover
+letter has 3 or 4 short paragraphs separated by blank lines and never mentions salary or
+stipend."""
 
 
 def pack_user(profile_text: str, posting: Posting, company: Company | None) -> str:

@@ -137,3 +137,15 @@ def test_fix_never_outputs_em_dash_and_reports_remaining_cliches() -> None:
 
 def test_empty_text() -> None:
     assert style.check("   ", "followup", "en") == ["empty text"]
+
+
+def test_fix_separates_availability_and_normalizes_hyphens() -> None:
+    text = f"{AV_EN} I built a churn‑risk model.\nBest,\nAlex"
+    fixed, _ = style.fix(text, "cover_letter", "en")
+    assert fixed.startswith(f"{AV_EN}\n\nI built a churn-risk model.")
+    assert "‑" not in fixed
+
+
+def test_new_cliches_are_detected() -> None:
+    assert style.find_cliches("I am drawn to your mission and eager to contribute.")
+    assert style.find_cliches("Sono motivato a contribuire al team.")
