@@ -19,6 +19,7 @@ from sqlalchemy import Engine
 from sqlmodel import Session
 
 from radar.connectors.base import Connector
+from radar.connectors.status import SourcePaused, pause, paused_sources
 from radar.db import get_setting, init_db, set_setting
 from radar.models import Posting, Run
 from radar.pipeline.closed import (
@@ -142,11 +143,23 @@ def _collect(
     touched: set[int] = set()
     seen: set[int] = set()
     companies = company_index(session)
+    paused = paused_sources(session)
     for conn in connectors:
         src = _source_stats(stats, conn.source)
+        if conn.source in paused:
+            src["paused"] = 1
+            continue
         src["boards"] += 1
         try:
             raws = conn.fetch()
+        except SourcePaused as exc:
+            src["errors"] += 1
+            src["paused"] = 1
+            paused.add(conn.source)
+            pause(session, exc.source, exc.reason, exc.action)
+            session.commit()
+            stats["errors"].append({"source": conn.source, "error": f"paused: {exc.reason}"})
+            continue
         except Exception as exc:
             src["errors"] += 1
             stats["errors"].append({"source": conn.source, "error": error_label(exc)})

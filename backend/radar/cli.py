@@ -19,6 +19,8 @@ config_app = typer.Typer(
 )
 app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
+connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
+app.add_typer(connectors_app, name="connectors")
 console = Console()
 
 
@@ -151,6 +153,31 @@ def send(
     result = send_approved(dry_run=dry_run)
     if result.get("stopped") in {"unauthenticated", "quota"}:
         raise typer.Exit(1)
+
+
+@connectors_app.command("status")
+def connectors_status() -> None:
+    """Show paused sources and what to do."""
+    from radar.connectors.status import all_status
+    from radar.db import session_scope
+
+    with session_scope() as s:
+        status = all_status(s)
+    if not status:
+        console.print("Nessuna fonte in pausa.")
+    for source, info in status.items():
+        console.print(f"[bold]{source}[/]: {info.get('reason')} -> {info.get('action')}")
+
+
+@connectors_app.command("resume")
+def connectors_resume(source: str) -> None:
+    """Resume a paused source (after you fixed the cause, e.g. logged in again)."""
+    from radar.connectors.status import resume
+    from radar.db import session_scope
+
+    with session_scope() as s:
+        ok = resume(s, source)
+    console.print("Ripresa." if ok else "Fonte non in pausa.")
 
 
 @db_app.command("copy")

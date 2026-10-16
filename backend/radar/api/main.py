@@ -19,6 +19,7 @@ from radar.api.deps import get_db_engine, require_auth
 from radar.api.routes import (
     applications,
     companies,
+    connectors,
     contacts,
     drafts,
     packs,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
         settings,
         runs,
         usage,
+        connectors,
     )
     for module in modules:
         api.include_router(module.router)
