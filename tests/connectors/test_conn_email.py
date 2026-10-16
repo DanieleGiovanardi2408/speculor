@@ -343,7 +343,7 @@ def test_registry_enables_email_only_when_env_set(
     (conn,) = build_connectors(client, cfg, settings=full)
     assert isinstance(conn, EmailAlertsConnector)
     assert (conn.source, conn.folder, conn.since_days, conn.port) == ("email", "Alerts", 7, 993)
-    assert conn.extra_senders == ("alerts@jobs.example.com",)
+    assert conn.extra_senders == ()  # config cannot add senders: LinkedIn + JobTeaser only
     assert build_connectors(client, cfg, sources=["lever"], settings=full) == []
     disabled = {"email": {"enabled": False}}
     assert build_connectors(client, disabled, settings=full) == []

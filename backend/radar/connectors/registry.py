@@ -13,7 +13,7 @@ Structure (see ``config/companies.example.yaml``)::
         - {keywords: "AI engineer intern", location: "Italy"}
     email:                   # optional; the "email" source needs RADAR_IMAP_* env vars
       enabled: true          # optional, default true
-      extra_senders: [alerts@jobs.example.com, "@example.org"]  # generic alert senders
+      # Only LinkedIn and JobTeaser alert senders are ever processed (no generic senders).
 """
 
 from __future__ import annotations
@@ -121,11 +121,8 @@ def build_connectors(
             from radar.config import get_settings
 
             settings = get_settings()
-        senders = em.get("extra_senders") or []
-        email_conn = EmailAlertsConnector.from_settings(
-            settings,
-            extra_senders=[str(s) for s in senders] if isinstance(senders, list) else [],
-        )
+        # Deliberately no extra senders: only LinkedIn and JobTeaser alerts are read.
+        email_conn = EmailAlertsConnector.from_settings(settings)
         if email_conn is not None:
             out.append(email_conn)
     return out
