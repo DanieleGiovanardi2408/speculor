@@ -301,6 +301,20 @@ POSTINGS: list[_P] = [
         deadline=30,
         age=1,
     ),
+    _P(
+        "pianura_grad",
+        5,
+        "Graduate Programme 2027, Data & AI (September intake)",
+        "Bologna",
+        "IT",
+        "Graduate",
+        "Data",
+        "greenhouse",
+        "Media",
+        filter_state="flagged",
+        deadline=40,
+        age=0,
+    ),
     # older, open
     _P(
         "nebbia_research",
@@ -697,6 +711,14 @@ POSTINGS: list[_P] = [
 
 # rule_id, action, reason, evidence
 _HITS: dict[str, list[tuple[str, str, str, str]]] = {
+    "pianura_grad": [
+        (
+            "post_graduation",
+            "flag",
+            "post-graduation graduate programme (start September 2027)",
+            "The programme starts in September 2027 for recent graduates.",
+        )
+    ],
     "tramonto_ml": [
         (
             "start_date",

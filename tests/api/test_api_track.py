@@ -52,6 +52,7 @@ def test_summary_has_track_field(client: TestClient) -> None:
 
 def test_track_param_splits_postings(client: TestClient, db: Session) -> None:
     before = client.get("/api/postings").json()
+    demo_post = _ids(client.get("/api/postings", params={"track": "post_graduation"}).json())
     pid = _mark_post_graduation(db, "Machine Learning Intern")
 
     default = client.get("/api/postings").json()
@@ -60,13 +61,14 @@ def test_track_param_splits_postings(client: TestClient, db: Session) -> None:
     assert client.get("/api/postings", params={"track": "internship"}).json() == default
 
     post = client.get("/api/postings", params={"track": "post_graduation"}).json()
-    assert _ids(post) == {pid}
-    assert post[0]["track"] == "post_graduation"
-    assert post[0]["filter_state"] == "flagged"  # flagged, not an exclusion
-    assert any(h["rule_id"] == POST_GRADUATION_ID for h in post[0]["filter_hits"])
+    assert _ids(post) == demo_post | {pid}
+    mine = next(p for p in post if p["id"] == pid)
+    assert mine["track"] == "post_graduation"
+    assert mine["filter_state"] == "flagged"  # flagged, not an exclusion
+    assert any(h["rule_id"] == POST_GRADUATION_ID for h in mine["filter_hits"])
 
     every = client.get("/api/postings", params={"track": "all"}).json()
-    assert _ids(every) == _ids(default) | {pid}
+    assert _ids(every) == _ids(default) | demo_post | {pid}
 
     assert client.get(f"/api/postings/{pid}").json()["track"] == "post_graduation"
     assert client.get("/api/postings", params={"track": "nope"}).status_code == 422
@@ -102,7 +104,7 @@ def test_override_moves_post_graduation_to_internship(client: TestClient, db: Se
 
 def test_today_new_uses_internship_track(client: TestClient, db: Session) -> None:
     before = client.get("/api/today").json()
-    assert before["new_post_graduation"] == 0
+    assert before["new_post_graduation"] == 1  # the demo graduate programme
     assert "Machine Learning Intern" in {p["title"] for p in before["new_since_yesterday"]}
 
     _mark_post_graduation(db, "Machine Learning Intern")
@@ -110,7 +112,7 @@ def test_today_new_uses_internship_track(client: TestClient, db: Session) -> Non
     titles = {p["title"] for p in after["new_since_yesterday"]}
     assert "Machine Learning Intern" not in titles
     assert len(after["new_since_yesterday"]) == len(before["new_since_yesterday"]) - 1
-    assert after["new_post_graduation"] == 1
+    assert after["new_post_graduation"] == 2
     assert all(p["track"] == "internship" for p in after["new_since_yesterday"])
 
 
