@@ -56,3 +56,16 @@ def fake_keyring(monkeypatch: pytest.MonkeyPatch) -> FakeKeyring:
     ring = FakeKeyring()
     monkeypatch.setattr(imap_auth, "_keyring", lambda: ring)
     return ring
+
+
+def _no_real_jobteaser_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[None]:
+    """A developer Mac may have the real JobTeaser browser profile; tests must never see it."""
+    from radar.config import get_settings
+
+    missing = tmp_path_factory.getbasetemp() / "no-jobteaser-profile"
+    monkeypatch.setenv("RADAR_JOBTEASER_PROFILE", str(missing))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

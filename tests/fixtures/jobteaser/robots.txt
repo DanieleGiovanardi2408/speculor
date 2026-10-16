@@ -1,0 +1,8 @@
+# Fictional robots.txt shaped like a JobTeaser school host (offer pages allowed, rest disallowed).
+User-agent: *
+Allow: /$
+Allow: /it$
+Allow: /*/users/sign_in
+Allow: /*/job-offers/
+Disallow: /*/job-offers/$
+Disallow: /*

@@ -1,0 +1,962 @@
+"""JobTeaser (Luiss career service) through the user's own logged-in browser profile.
+
+Local Mac only, never CI. The session lives only in a dedicated Chromium profile
+(``RADAR_JOBTEASER_PROFILE``) created by ``make jobteaser-login``; cookies are never read,
+exported or logged. The browser layer (:mod:`radar.connectors.jobteaser_browser`, Playwright,
+optional ``browser`` extra) is injected, so everything here is tested with fake pages.
+
+One fetch, one page at a time, a pause of a few seconds between pages, no parallel tabs:
+
+1. Session check: ``<base>/<locale>`` (the dashboard). A redirect to ``/users/sign_in`` or to
+   an SSO host means the session expired -> :class:`SourcePaused`. A captcha/challenge/block
+   page anywhere -> :class:`SourcePaused` too (never solved, never retried).
+2. Listing pages (reserved filters + the user's searches, a few pages each), each checked
+   against the host's robots.txt with standard wildcard semantics BEFORE it is opened. Offers
+   are read from the JSON the web app loads (intercepted responses / ``__NEXT_DATA__``), with
+   the offer links in the DOM as fallback.
+3. Detail pages, at most ``max_details`` per day, only for offers whose id is not already
+   stored by this source: listing offers first, then offers known only from email alerts or
+   the seed (to add their description). JSON-LD ``JobPosting`` first, then JSON, then the DOM.
+   404/410 or an "expired" marker = closed: not returned, remembered in a small state file.
+
+Only offers whose detail page was read this run are returned, so a known offer's stored
+description is never overwritten with listing text. Not exhaustive: never closes by absence.
+Logs carry counts only.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import random
+import re
+import time
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import quote_plus, urlsplit
+
+from selectolax.lexbor import LexborHTMLParser, LexborNode
+
+from radar.connectors.email_parsers.common import (
+    container_lines,
+    find_cards,
+    lines_after,
+    pick_title,
+)
+from radar.connectors.email_parsers.jobteaser import _fields, offer_key
+from radar.connectors.http import PoliteClient, html_to_text, parse_date, parse_datetime
+from radar.connectors.status import SourcePaused
+from radar.pipeline.normalize import jobteaser_offer_id
+from radar.schemas import RawPosting
+
+if TYPE_CHECKING:
+    from radar.config import Settings
+
+log = logging.getLogger(__name__)
+
+SOURCE = "jobteaser"
+DEFAULT_BASE_URL = "https://luiss.jobteaser.com"
+DEFAULT_LOCALE = "it"
+LOGIN_PATH = "/{locale}/users/sign_in"
+PAUSE_ACTION = (
+    "Esegui `make jobteaser-login`, accedi con l'account Luiss, poi "
+    "`radar connectors resume jobteaser`"
+)
+BLOCK_ACTION = (
+    "JobTeaser ha mostrato un controllo anti-bot o un blocco: non viene aggirato. Apri "
+    "JobTeaser a mano più tardi, poi `radar connectors resume jobteaser`"
+)
+
+# --------------------------------------------------------------------------- page classification
+
+_LOGIN_PATH_RE = re.compile(r"/(users/sign_in|sign_in|login|signin|auth/|saml|cas/|sso)", re.I)
+_BLOCK_TITLE_RE = re.compile(
+    r"security checkup|just a moment|attention required|access denied|un momento|"
+    r"verifica di sicurezza|vérification",
+    re.I,
+)
+_BLOCK_MARKERS = (
+    "challenge-platform",
+    "cf_chl_opt",
+    "__cf_chl",
+    "cf-turnstile",
+    "challenges.cloudflare.com",
+    "hcaptcha.com/captcha",
+    "g-recaptcha",
+    "px-captcha",
+    "datadome",
+)
+CLOSED_MARKERS = (
+    "offerta scaduta",
+    "offerta non è più disponibile",
+    "offerta non e' piu disponibile",
+    "questa offerta è scaduta",
+    "offer has expired",
+    "offer expired",
+    "this job offer is no longer available",
+    "this offer is no longer available",
+    "no longer accepting applications",
+    "offre expirée",
+    "cette offre n'est plus disponible",
+)
+
+
+@dataclass
+class Page:
+    """What the browser layer returns for one navigation (kept in memory, never logged)."""
+
+    url: str  # final URL after redirects
+    status: int | None
+    html: str
+    #: JSON bodies of responses from jobteaser hosts loaded by the page: (url, parsed body)
+    payloads: list[tuple[str, Any]] = field(default_factory=list)
+
+
+class Browser(Protocol):
+    def visit(self, url: str) -> Page: ...
+
+    def close(self) -> None: ...
+
+
+def _title(html: str) -> str:
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+
+def is_login_page(page: Page, base_url: str = DEFAULT_BASE_URL) -> bool:
+    """Session gone: redirected to the sign-in page or away to an SSO/identity host."""
+    parts = urlsplit(page.url)
+    host = parts.netloc.lower()
+    if host and not (host == "jobteaser.com" or host.endswith(".jobteaser.com")):
+        return True
+    if _LOGIN_PATH_RE.search(parts.path):
+        return True
+    return 'name="user[password]"' in page.html or 'id="user_password"' in page.html
+
+
+def is_block_page(page: Page) -> bool:
+    """Captcha, Cloudflare challenge, rate limit or another anti-bot block page."""
+    if page.status == 429:
+        return True
+    lowered = page.html.lower()
+    if _BLOCK_TITLE_RE.search(_title(page.html)):
+        return True
+    if any(marker in lowered for marker in _BLOCK_MARKERS):
+        return True
+    return page.status == 403
+
+
+def check_page(page: Page, base_url: str = DEFAULT_BASE_URL) -> None:
+    """Raise SourcePaused for an expired session or a block page (login first: a sign-in page
+    may embed a captcha widget, and the fix there is logging in again)."""
+    if is_login_page(page, base_url):
+        raise SourcePaused(SOURCE, "sessione scaduta", PAUSE_ACTION)
+    if is_block_page(page):
+        raise SourcePaused(SOURCE, "captcha o blocco", BLOCK_ACTION)
+
+
+def is_closed_page(page: Page) -> bool:
+    if page.status in (404, 410):
+        return True
+    text = html_to_text(page.html).lower()
+    return any(marker in text for marker in CLOSED_MARKERS)
+
+
+# --------------------------------------------------------------------------- robots.txt
+
+
+@dataclass
+class RobotsRules:
+    """robots.txt rules for ``User-agent: *`` with Google semantics (``*``, ``$``, longest
+    match wins, Allow wins ties). The stdlib parser ignores wildcards and would allow
+    everything on JobTeaser's school hosts, so it is not used here."""
+
+    rules: list[tuple[bool, str]] = field(default_factory=list)  # (allow, pattern)
+
+    @classmethod
+    def parse(cls, text: str, agent: str = "*") -> RobotsRules:
+        groups: list[tuple[list[str], list[tuple[bool, str]]]] = []
+        agents: list[str] = []
+        rules: list[tuple[bool, str]] = []
+        in_rules = False
+        for raw in text.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if ":" not in line:
+                continue
+            key, value = (p.strip() for p in line.split(":", 1))
+            key = key.lower()
+            if key == "user-agent":
+                if in_rules:
+                    groups.append((agents, rules))
+                    agents, rules, in_rules = [], [], False
+                agents.append(value.lower())
+            elif key in ("allow", "disallow"):
+                in_rules = True
+                if value:
+                    rules.append((key == "allow", value))
+        if agents:
+            groups.append((agents, rules))
+        agent = agent.lower()
+        specific = [r for a, r in groups if any(x != "*" and x in agent for x in a)]
+        if specific:
+            return cls([rule for group in specific for rule in group])
+        return cls([rule for a, r in groups if "*" in a for rule in r])
+
+    def allowed(self, url: str) -> bool:
+        parts = urlsplit(url)
+        path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+        best: tuple[int, bool] | None = None
+        for allow, pattern in self.rules:
+            if _robots_match(pattern, path):
+                cand = (len(pattern), allow)
+                if best is None or cand[0] > best[0] or (cand[0] == best[0] and allow):
+                    best = cand
+        return True if best is None else best[1]
+
+
+def _robots_match(pattern: str, path: str) -> bool:
+    anchored = pattern.endswith("$")
+    body = pattern[:-1] if anchored else pattern
+    regex = ".*".join(re.escape(part) for part in body.split("*"))
+    return re.match(regex + ("$" if anchored else ""), path) is not None
+
+
+# --------------------------------------------------------------------------- offer extraction
+
+_ID_RE = re.compile(
+    r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{3,})$", re.I
+)
+_ID_KEYS = ("id", "uuid", "job_offer_id", "jobOfferId", "offer_id", "offerId")
+_TITLE_KEYS = ("title", "name", "position", "position_name", "positionName", "job_title")
+_COMPANY_KEYS = (
+    "company",
+    "organization",
+    "organisation",
+    "employer",
+    "recruiter",
+    "company_name",
+    "companyName",
+    "organization_name",
+    "organizationName",
+)
+_LOCATION_KEYS = (
+    "location",
+    "locations",
+    "city",
+    "cities",
+    "place",
+    "address",
+    "location_name",
+    "locationName",
+    "formatted_location",
+)
+_CONTRACT_KEYS = (
+    "contract_type",
+    "contractType",
+    "contract",
+    "contract_name",
+    "contractName",
+    "job_type",
+    "jobType",
+    "employment_type",
+    "employmentType",
+)
+_URL_KEYS = ("url", "path", "href", "link", "permalink", "share_url", "shareUrl", "slug")
+_DESC_KEYS = (
+    "description",
+    "description_html",
+    "descriptionHtml",
+    "content",
+    "body",
+    "job_description",
+    "jobDescription",
+    "mission",
+    "profile",
+)
+_POSTED_KEYS = (
+    "published_at",
+    "publishedAt",
+    "publication_date",
+    "publicationDate",
+    "created_at",
+    "createdAt",
+    "start_publication_date",
+    "datePosted",
+)
+_CLOSING_KEYS = (
+    "closing_date",
+    "closingDate",
+    "expires_at",
+    "expiresAt",
+    "expiration_date",
+    "expirationDate",
+    "end_date",
+    "endDate",
+    "application_deadline",
+    "applicationDeadline",
+    "valid_through",
+    "validThrough",
+    "deadline",
+    "end_publication_date",
+)
+_TOTAL_KEYS = (
+    "total",
+    "total_count",
+    "totalCount",
+    "nb_hits",
+    "nbHits",
+    "total_hits",
+    "totalHits",
+    "count",
+)
+
+
+def _str(value: Any) -> str:
+    if isinstance(value, str):
+        return re.sub(r"\s+", " ", value).strip()
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _first(obj: dict[str, Any], keys: Iterable[str]) -> Any:
+    for k in keys:
+        if k in obj and obj[k] not in (None, "", [], {}):
+            return obj[k]
+    return None
+
+
+def _name_of(value: Any) -> str:
+    """'Acme' | {'name': 'Acme'} | [{'name': 'Rome'}, ...] -> text."""
+    if isinstance(value, dict):
+        for k in ("name", "label", "title", "formatted", "city", "value", "addressLocality"):
+            if _str(value.get(k)):
+                return _str(value.get(k))
+        address = value.get("address")
+        return _name_of(address) if isinstance(address, dict) else ""
+    if isinstance(value, list):
+        names = [n for n in (_name_of(v) for v in value[:4]) if n]
+        return ", ".join(dict.fromkeys(names))
+    return _str(value)
+
+
+def _offer_id(obj: dict[str, Any]) -> str | None:
+    for k in _URL_KEYS:
+        value = obj.get(k)
+        if isinstance(value, str) and "job-offers/" in value:
+            got = offer_key(value if value.startswith("http") else f"{DEFAULT_BASE_URL}{value}")
+            if got:
+                return got[0]
+    for k in _ID_KEYS:
+        value = _str(obj.get(k))
+        if value and _ID_RE.match(value):
+            return value.lower()
+    return None
+
+
+def offer_from_json(obj: dict[str, Any]) -> dict[str, Any] | None:
+    """A JSON object that looks like a JobTeaser offer -> normalized dict, else None."""
+    title = _str(_first(obj, _TITLE_KEYS))
+    company = _name_of(_first(obj, _COMPANY_KEYS))
+    offer_id = _offer_id(obj)
+    has_offer_url = any(isinstance(obj.get(k), str) and "job-offers/" in obj[k] for k in _URL_KEYS)
+    if not offer_id or not title or not (company or has_offer_url):
+        return None
+    href = next(
+        (obj[k] for k in _URL_KEYS if isinstance(obj.get(k), str) and "job-offers/" in obj[k]),
+        None,
+    )
+    desc = _first(obj, _DESC_KEYS)
+    return {
+        "id": offer_id,
+        "title": title,
+        "company": company,
+        "location": _name_of(_first(obj, _LOCATION_KEYS)) or None,
+        "contract": _name_of(_first(obj, _CONTRACT_KEYS)) or None,
+        "href": href,
+        "description": html_to_text(desc) if isinstance(desc, str) else "",
+        "posted": _str(_first(obj, _POSTED_KEYS)) or None,
+        "closing": _str(_first(obj, _CLOSING_KEYS)) or None,
+    }
+
+
+def walk_json(data: Any, depth: int = 0) -> Iterator[dict[str, Any]]:
+    """Every dict in a JSON tree (depth-limited)."""
+    if depth > 12:
+        return
+    if isinstance(data, dict):
+        yield data
+        for value in data.values():
+            yield from walk_json(value, depth + 1)
+    elif isinstance(data, list):
+        for value in data:
+            yield from walk_json(value, depth + 1)
+
+
+def offers_from_json(data: Any) -> list[dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for obj in walk_json(data):
+        offer = offer_from_json(obj)
+        if offer is not None:
+            out.setdefault(offer["id"], offer)
+    return list(out.values())
+
+
+def json_total(data: Any) -> int | None:
+    """Total hit count of a search response, if it says so."""
+    for obj in walk_json(data):
+        for k in _TOTAL_KEYS:
+            value = obj.get(k)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                return value
+    return None
+
+
+def embedded_json(html: str) -> list[Any]:
+    """``__NEXT_DATA__``/``application/json`` script blobs and JSON-LD blocks of a page."""
+    tree = LexborHTMLParser(html)
+    out: list[Any] = []
+    for node in tree.css(
+        'script[type="application/json"], script[type="application/ld+json"], script#__NEXT_DATA__'
+    ):
+        text = node.text(deep=True).strip()
+        if not text:
+            continue
+        try:
+            out.append(json.loads(text))
+        except ValueError:
+            continue
+    return out
+
+
+def offer_href_key(href: str | None, base_url: str = DEFAULT_BASE_URL) -> tuple[str, str] | None:
+    """(offer id, offer URL) for an absolute or root-relative offer link, else None."""
+    if not href:
+        return None
+    if href.startswith("/"):
+        href = f"{base_url.rstrip('/')}{href}"
+    return offer_key(href)
+
+
+def offers_from_dom(html: str, base_url: str = DEFAULT_BASE_URL) -> list[dict[str, Any]]:
+    """Fallback: offer links in the rendered DOM, grouped into cards like the email parser."""
+    tree = LexborHTMLParser(html)
+    for node in tree.css("head, style, script, noscript, template, svg"):
+        node.decompose()
+
+    def key_of(href: str) -> tuple[str, str] | None:
+        return offer_href_key(href, base_url)
+
+    out: list[dict[str, Any]] = []
+    for card in find_cards(tree, key_of):
+        lines = container_lines(card.container)
+        title = pick_title(card, lines)
+        if not title:
+            continue
+        company, location, contract, _meta = _fields(lines_after(title, lines))
+        out.append(
+            {
+                "id": card.key,
+                "title": title,
+                "company": company,
+                "location": location,
+                "contract": contract,
+                "href": card.url,
+                "description": "",
+                "posted": None,
+                "closing": None,
+            }
+        )
+    return out
+
+
+def parse_listing(page: Page, base_url: str = DEFAULT_BASE_URL) -> tuple[list[dict[str, Any]], str]:
+    """(offers, how) for a listing page; how = "json" | "dom" | "none"."""
+    found: dict[str, dict[str, Any]] = {}
+    for _url, body in page.payloads:
+        for offer in offers_from_json(body):
+            found.setdefault(offer["id"], offer)
+    for blob in embedded_json(page.html):
+        for offer in offers_from_json(blob):
+            found.setdefault(offer["id"], offer)
+    if found:
+        return list(found.values()), "json"
+    dom = offers_from_dom(page.html, base_url)
+    return dom, "dom" if dom else "none"
+
+
+_DATE_LABEL_RE = re.compile(
+    r"(scadenza|data di scadenza|candidature entro|candidati entro|closing date|apply before|"
+    r"application deadline|deadline|date limite|expires?)\s*:?\s*(.{4,40})",
+    re.I,
+)
+_IT_MONTHS = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5, "giugno": 6, "luglio": 7,
+    "agosto": 8, "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7,
+    "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+}  # fmt: skip
+
+
+def parse_human_date(text: str | None) -> date | None:
+    """ISO, dd/mm/yyyy, dd.mm.yyyy or '15 novembre 2026' / 'November 15, 2026' -> date."""
+    if not text:
+        return None
+    iso = parse_date(text[:10]) if re.match(r"^\d{4}-\d{2}-\d{2}", text) else None
+    if iso:
+        return iso
+    m = re.search(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b", text)
+    if m:
+        try:
+            return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
+    m = re.search(r"\b(\d{1,2})\s+([a-zà]+)\s+(\d{4})\b", text, re.I) or re.search(
+        r"\b([a-z]+)\s+(\d{1,2}),?\s+(\d{4})\b", text, re.I
+    )
+    if m:
+        a, b, year = m.groups()
+        day, month = (a, b) if a.isdigit() else (b, a)
+        num = _IT_MONTHS.get(month.lower())
+        if num:
+            try:
+                return date(int(year), num, int(day))
+            except ValueError:
+                return None
+    return None
+
+
+def _jsonld_posting(blobs: list[Any]) -> dict[str, Any] | None:
+    for blob in blobs:
+        for obj in walk_json(blob):
+            kind = obj.get("@type")
+            if kind == "JobPosting" or (isinstance(kind, list) and "JobPosting" in kind):
+                return obj
+    return None
+
+
+def _node_text(node: LexborNode | None) -> str:
+    return html_to_text(node.html or "") if node is not None else ""
+
+
+_DESC_SELECTORS = (
+    "[data-testid*='description' i]",
+    "[data-testid*='JobOfferContent' i]",
+    "[class*='description' i]",
+    "[class*='JobOffer' i] article",
+    "article",
+    "main",
+)
+
+
+def parse_detail(page: Page) -> dict[str, Any]:
+    """Detail page -> dict(title, company, location, contract, description, posted, closing,
+    closed, how). ``how`` = "jsonld" | "json" | "dom"."""
+    blobs = embedded_json(page.html)
+    out: dict[str, Any] = {
+        "title": None,
+        "company": None,
+        "location": None,
+        "contract": None,
+        "description": "",
+        "posted": None,
+        "closing": None,
+        "closed": is_closed_page(page),
+        "how": "dom",
+    }
+    ld = _jsonld_posting(blobs)
+    if ld is not None:
+        out.update(
+            title=_str(ld.get("title")) or None,
+            company=_name_of(ld.get("hiringOrganization")) or None,
+            location=_name_of(ld.get("jobLocation")) or None,
+            contract=_name_of(ld.get("employmentType")) or None,
+            description=html_to_text(ld["description"])
+            if isinstance(ld.get("description"), str)
+            else "",
+            posted=_str(ld.get("datePosted")) or None,
+            closing=_str(ld.get("validThrough")) or None,
+            how="jsonld",
+        )
+    if not out["description"]:
+        json_offers = [
+            o
+            for body in [*(b for _u, b in page.payloads), *blobs]
+            for o in offers_from_json(body)
+            if o["description"]
+        ]
+        if json_offers:
+            best = max(json_offers, key=lambda o: len(o["description"]))
+            for k in ("title", "company", "location", "contract", "posted", "closing"):
+                out[k] = out[k] or best[k]
+            out["description"] = best["description"]
+            out["how"] = "json"
+    tree = LexborHTMLParser(page.html)
+    for node in tree.css("script, style, noscript, template, svg, nav, header, footer"):
+        node.decompose()
+    if not out["description"]:
+        for selector in _DESC_SELECTORS:
+            text = _node_text(tree.css_first(selector))
+            if len(text) > 80:
+                out["description"] = text
+                break
+    if not out["title"]:
+        h1 = tree.css_first("h1")
+        out["title"] = _str(h1.text(deep=True)) if h1 is not None else None
+        out["title"] = out["title"] or None
+    if not out["closing"]:
+        m = _DATE_LABEL_RE.search(html_to_text(page.html))
+        if m and parse_human_date(m.group(2)):
+            out["closing"] = m.group(2)
+    return out
+
+
+# --------------------------------------------------------------------------- config
+
+
+def listing_urls(cfg: dict[str, Any], base_url: str, locale: str) -> list[tuple[str, str]]:
+    """[(kind, url template with {page})] from config: reserved filters, then searches."""
+    out: list[tuple[str, str]] = []
+    fmt = {"base": base_url.rstrip("/"), "locale": locale}
+    for entry in cfg.get("reserved") or []:
+        url = entry.get("url") if isinstance(entry, dict) else entry
+        if isinstance(url, str) and url.strip():
+            out.append(
+                ("reserved", url.strip().replace("{base}", fmt["base"]).replace("{locale}", locale))
+            )
+    template = str(cfg.get("search_url") or "{base}/{locale}/job-offers?q={q}&page={page}")
+    for kw in cfg.get("searches") or []:
+        if isinstance(kw, str) and kw.strip():
+            url = template.replace("{base}", fmt["base"]).replace("{locale}", locale)
+            out.append(("search", url.replace("{q}", quote_plus(kw.strip()))))
+    return out
+
+
+def _page_url(template: str, page: int) -> str:
+    return template.replace("{page}", str(page))
+
+
+# --------------------------------------------------------------------------- state file
+
+
+class ClosedState:
+    """Ids of offers whose detail page said closed/404 (ids only, no content)."""
+
+    def __init__(self, path: Path | None) -> None:
+        self.path = path
+        self.ids: set[str] = set()
+        if path is not None and path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                self.ids = {str(x) for x in data.get("closed_ids", [])}
+            except (ValueError, OSError, AttributeError):
+                self.ids = set()
+
+    def add(self, offer_id: str) -> None:
+        self.ids.add(offer_id)
+
+    def save(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        ids = sorted(self.ids)[-5000:]
+        self.path.write_text(json.dumps({"closed_ids": ids}), encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- connector
+
+IdsProvider = Callable[[], tuple[set[str], list[str]]]
+
+
+def db_offer_ids() -> tuple[set[str], list[str]]:
+    """(ids already stored by this source, open offers known only from alerts/seed, newest
+    first) from the configured database."""
+    from sqlmodel import Session, col, select
+
+    from radar.config import get_settings
+    from radar.db import get_engine
+    from radar.models import Posting
+
+    known: set[str] = set()
+    candidates: list[str] = []
+    with Session(get_engine(get_settings().database_url)) as session:
+        rows = session.exec(
+            select(Posting.source, Posting.url, Posting.status)
+            .where(col(Posting.url).contains("jobteaser.com"))
+            .order_by(col(Posting.first_seen).desc())
+        ).all()
+    for source, url, status in rows:
+        offer_id = jobteaser_offer_id(url or "")
+        if not offer_id:
+            continue
+        if source == SOURCE:
+            known.add(offer_id)
+        elif status == "open" and offer_id not in candidates:
+            candidates.append(offer_id)
+    return known, [c for c in candidates if c not in known]
+
+
+class JobTeaserConnector:
+    source = SOURCE
+    label = "jobteaser (career service)"
+    exhaustive = False
+
+    def __init__(
+        self,
+        browser_factory: Callable[[], Browser],
+        client: PoliteClient | None,
+        cfg: dict[str, Any] | None = None,
+        *,
+        ids: IdsProvider = db_offer_ids,
+        state_path: Path | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        pause_range: tuple[float, float] = (3.0, 6.0),
+        robots_text: str | None = None,
+    ) -> None:
+        cfg = cfg or {}
+        self.browser_factory = browser_factory
+        self.client = client
+        self.base_url = str(cfg.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
+        self.locale = str(cfg.get("locale") or DEFAULT_LOCALE)
+        self.max_pages = int(cfg.get("max_pages", 3))
+        self.max_details = int(cfg.get("max_details", 40))
+        self.enrich_known = bool(cfg.get("enrich_alerts", True))
+        self.listings = listing_urls(cfg, self.base_url, self.locale)
+        self.ids = ids
+        self.state = ClosedState(state_path)
+        self.sleep = sleep
+        self.pause_range = pause_range
+        self._robots_text = robots_text
+        self._robots: RobotsRules | None = None
+        self._visits = 0
+        self.stats: dict[str, int] = {}
+
+    # -- helpers
+    def robots(self) -> RobotsRules:
+        if self._robots is None:
+            text = self._robots_text
+            if text is None:
+                text = ""
+                if self.client is not None:
+                    res = self.client.fetch(
+                        f"{self.base_url}/robots.txt", ok_statuses=frozenset(range(200, 600))
+                    )
+                    if res.status in (401, 403) or res.status >= 500:
+                        text = "User-agent: *\nDisallow: /"
+                    elif res.status < 400:
+                        text = res.text
+            self._robots = RobotsRules.parse(text)
+        return self._robots
+
+    def _visit(self, browser: Browser, url: str) -> Page:
+        if self._visits:
+            self.sleep(random.uniform(*self.pause_range))
+        self._visits += 1
+        page = browser.visit(url)
+        check_page(page, self.base_url)
+        return page
+
+    def _count(self, key: str, n: int = 1) -> None:
+        self.stats[key] = self.stats.get(key, 0) + n
+
+    def offer_url(self, offer_id: str, href: str | None = None) -> str:
+        if href:
+            full = href if href.startswith("http") else f"{self.base_url}{href}"
+            got = offer_key(full)
+            if got and got[0] == offer_id:
+                return got[1]
+        return f"{self.base_url}/{self.locale}/job-offers/{offer_id}"
+
+    # -- main
+    def session_ok(self, browser: Browser) -> Page:
+        """Open the dashboard; raises SourcePaused if the session expired or we're blocked."""
+        return self._visit(browser, f"{self.base_url}/{self.locale}")
+
+    def collect_listings(
+        self, browser: Browser, known: set[str], max_pages: int | None = None
+    ) -> dict[str, dict[str, Any]]:
+        found: dict[str, dict[str, Any]] = {}
+        robots = self.robots()
+        for kind, template in self.listings:
+            for n in range(1, (max_pages or self.max_pages) + 1):
+                url = _page_url(template, n)
+                if not robots.allowed(url):
+                    self._count("listing_robots_disallowed")
+                    break
+                page = self._visit(browser, url)
+                offers, how = parse_listing(page, self.base_url)
+                self._count(f"listing_pages_{how}")
+                fresh = 0
+                for offer in offers:
+                    offer["list"] = kind
+                    if offer["id"] not in found:
+                        found[offer["id"]] = offer
+                        fresh += 1
+                if not offers or fresh == 0 or "{page}" not in template:
+                    break
+        self._count("listing_offers", len(found))
+        self._count("listing_known", sum(1 for k in found if k in known))
+        return found
+
+    def fetch(self) -> list[RawPosting]:
+        known, alert_ids = self.ids()
+        self.stats = {}
+        self._visits = 0
+        browser = self.browser_factory()
+        out: list[RawPosting] = []
+        try:
+            self.session_ok(browser)
+            listed = self.collect_listings(browser, known)
+            todo: list[tuple[str, dict[str, Any] | None]] = [
+                (oid, offer)
+                for oid, offer in listed.items()
+                if oid not in known and oid not in self.state.ids
+            ]
+            if self.enrich_known:
+                todo += [
+                    (oid, None)
+                    for oid in alert_ids
+                    if oid not in listed and oid not in self.state.ids
+                ]
+            robots = self.robots()
+            for oid, offer in todo[: self.max_details]:
+                url = self.offer_url(oid, (offer or {}).get("href"))
+                if not robots.allowed(url):
+                    self._count("detail_robots_disallowed")
+                    continue
+                page = self._visit(browser, url)
+                detail = parse_detail(page)
+                self._count(f"detail_{detail['how']}")
+                if detail["closed"]:
+                    self.state.add(oid)
+                    self._count("detail_closed")
+                    continue
+                raw = to_raw(oid, self.offer_url(oid, page.url), offer, detail)
+                if raw is not None:
+                    out.append(raw)
+            self._count("detail_skipped_cap", max(0, len(todo) - self.max_details))
+        finally:
+            self.state.save()
+            browser.close()
+        log.info(
+            "jobteaser: %d pages, %d offers returned, stats=%s",
+            self._visits,
+            len(out),
+            json.dumps(self.stats, sort_keys=True),
+        )
+        return out
+
+
+def to_raw(
+    offer_id: str, url: str, offer: dict[str, Any] | None, detail: dict[str, Any]
+) -> RawPosting | None:
+    """Listing offer (optional) + detail page -> RawPosting (None if there's no title)."""
+    offer = offer or {}
+    title = detail.get("title") or offer.get("title") or ""
+    if not title:
+        return None
+    closing = parse_human_date(detail.get("closing") or offer.get("closing"))
+    posted = detail.get("posted") or offer.get("posted")
+    return RawPosting(
+        source=SOURCE,
+        external_id=offer_id,
+        url=url,
+        title=title,
+        company=detail.get("company") or offer.get("company") or "",
+        location=detail.get("location") or offer.get("location"),
+        employment_type=detail.get("contract") or offer.get("contract"),
+        raw_text=detail.get("description") or offer.get("description") or "",
+        posted_at=parse_datetime(posted) if posted else None,
+        deadline=closing,
+        extra={
+            "via": SOURCE,
+            "jobteaser_host": urlsplit(url).netloc,
+            "list": offer.get("list", "alert"),
+            "detail_fetched": True,
+        },
+    )
+
+
+def profile_dir(settings: Settings) -> Path:
+    return settings.jobteaser_profile.expanduser()
+
+
+def profile_ready(settings: Settings) -> bool:
+    """The "jobteaser" source exists only once `make jobteaser-login` created the profile."""
+    return profile_dir(settings).is_dir()
+
+
+def load_config() -> dict[str, Any]:
+    """``config/jobteaser_searches.yaml`` (gitignored) or the committed example."""
+    from radar.config import load_yaml_config
+
+    try:
+        return load_yaml_config("jobteaser_searches")
+    except FileNotFoundError:
+        return {}
+
+
+def from_settings(
+    client: PoliteClient, settings: Settings, cfg: dict[str, Any] | None = None
+) -> JobTeaserConnector | None:
+    """The connector if the browser profile exists, else None (never in CI)."""
+    if not profile_ready(settings):
+        return None
+    profile = profile_dir(settings)
+
+    def browser_factory() -> Browser:
+        from radar.connectors.jobteaser_browser import PlaywrightBrowser
+
+        return PlaywrightBrowser(profile)
+
+    return JobTeaserConnector(
+        browser_factory,
+        client,
+        cfg if cfg is not None else load_config(),
+        state_path=settings.data_dir / "jobteaser_state.json",
+    )
+
+
+def smoke_test(conn: JobTeaserConnector, browser: Browser) -> dict[str, Any]:
+    """`make jobteaser-test`: session check, the first page of the first listing, one detail
+    page. Counts and parse modes only (no titles, companies or text)."""
+    report: dict[str, Any] = {"session": "ok"}
+    conn.session_ok(browser)
+    robots = conn.robots()
+    if conn.listings:
+        kind, template = conn.listings[0]
+        url = _page_url(template, 1)
+        report["listing_kind"] = kind
+        if robots.allowed(url):
+            page = conn._visit(browser, url)
+            offers, how = parse_listing(page, conn.base_url)
+            totals = [t for t in (json_total(b) for _u, b in page.payloads) if t is not None]
+            report.update(
+                listing_parse=how,
+                listing_offers=len(offers),
+                listing_json_responses=len(page.payloads),
+                listing_total_reported=max(totals) if totals else None,
+            )
+        else:
+            report["listing"] = "robots.txt disallows this listing URL: not opened"
+    _known, alert_ids = conn.ids()
+    if alert_ids:
+        url = conn.offer_url(alert_ids[0])
+        if robots.allowed(url):
+            detail = parse_detail(conn._visit(browser, url))
+            report.update(
+                detail_parse=detail["how"],
+                detail_closed=detail["closed"],
+                detail_description_chars=len(detail["description"]),
+                detail_has_closing_date=parse_human_date(detail["closing"]) is not None,
+                detail_has_company=bool(detail["company"]),
+            )
+        else:
+            report["detail"] = "robots.txt disallows the detail URL: not opened"
+    else:
+        report["detail"] = "no alert/seed offer in the database to try"
+    report["pages_opened"] = conn._visits
+    return report

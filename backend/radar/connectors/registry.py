@@ -14,6 +14,8 @@ Structure (see ``config/companies.example.yaml``)::
     email:                   # optional; the "email" source needs RADAR_IMAP_* env vars
       enabled: true          # optional, default true
       # Only LinkedIn and JobTeaser alert senders are ever processed (no generic senders).
+    jobteaser:               # optional; needs the browser profile from `make jobteaser-login`
+      enabled: true          # searches: config/jobteaser_searches.yaml
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from radar.connectors.base import Connector
 from radar.connectors.email_alerts import EmailAlertsConnector
 from radar.connectors.greenhouse import GreenhouseConnector
 from radar.connectors.http import PoliteClient
+from radar.connectors.jobteaser import from_settings as jobteaser_from_settings
 from radar.connectors.lever import LeverConnector
 from radar.connectors.linkedin_guest import LinkedInGuestConnector
 from radar.connectors.smartrecruiters import SmartRecruitersConnector
@@ -35,7 +38,7 @@ if TYPE_CHECKING:
     from radar.config import Settings
 
 ATS_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
-ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email")
+ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email", "jobteaser")
 
 
 def _title_filter(value: Any) -> list[str] | None:
@@ -53,7 +56,8 @@ def build_connectors(
     settings: Settings | None = None,
 ) -> list[Connector]:
     """One connector per active company with a supported ATS, plus one LinkedIn connector,
-    plus the email-alerts connector when the RADAR_IMAP_* settings are set."""
+    plus the email-alerts connector when the RADAR_IMAP_* settings are set, plus the JobTeaser
+    connector when its browser profile exists (``RADAR_JOBTEASER_PROFILE``)."""
     wanted = set(sources) if sources else set(ALL_SOURCES)
     global_filter = _title_filter(companies_cfg.get("title_filter"))
     counters: Counter[str] = Counter()
@@ -125,4 +129,14 @@ def build_connectors(
         email_conn = EmailAlertsConnector.from_settings(settings)
         if email_conn is not None:
             out.append(email_conn)
+
+    jt = companies_cfg.get("jobteaser") or {}
+    if "jobteaser" in wanted and isinstance(jt, dict) and jt.get("enabled", True):
+        if settings is None:
+            from radar.config import get_settings
+
+            settings = get_settings()
+        jt_conn = jobteaser_from_settings(client, settings)
+        if jt_conn is not None:
+            out.append(jt_conn)
     return out

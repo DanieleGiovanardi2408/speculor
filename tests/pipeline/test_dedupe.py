@@ -72,7 +72,7 @@ def jobteaser(offer: str = "3f2a1b4c-1111-2222-3333-444455556666", **kw: Any) ->
     data: dict[str, Any] = {
         "source": "jobteaser",
         "external_id": offer,
-        "url": f"https://www.jobteaser.com/en/job-offers/{offer}-data-scientist-intern",
+        "url": f"https://www.jobteaser.com/job-offers/{offer}-data-scientist-intern",
         "title": "Stage - Data Scientist (6 mesi)",
         "company": "ACME SpA",
         "location": "Milano",
@@ -112,7 +112,7 @@ def test_canonical_url_boards_locales_and_tracking() -> None:
     uuid = "3f2a1b4c-1111-2222-3333-444455556666"
     jt = f"https://www.jobteaser.com/job-offers/{uuid}"
     assert canonical_url(f"https://uni.jobteaser.com/it/job-offers/{uuid}-intern?utm_x=1") == jt
-    assert canonical_url(f"https://www.jobteaser.com/en/job-offers/{uuid.upper()}") == jt
+    assert canonical_url(f"https://www.jobteaser.com/job-offers/{uuid.upper()}") == jt
     gh = "https://boards.greenhouse.io/jobs/12345"
     assert canonical_url("https://job-boards.eu.greenhouse.io/acme/jobs/12345?gh_src=li") == gh
     assert canonical_url("https://acme.example/careers/?gh_jid=12345") == gh

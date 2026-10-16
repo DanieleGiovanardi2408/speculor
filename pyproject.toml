@@ -27,6 +27,9 @@ dependencies = [
 # Local pre-ranking by embedding similarity (torch + a small multilingual model, ~0.5 GB).
 # Not installed in CI; without it the pipeline keeps its previous ordering.
 embed = ["sentence-transformers>=3.0"]
+# Local Mac only (JobTeaser connector): `uv sync --extra browser && uv run playwright install
+# chromium`. CI never installs it; tests use fake pages.
+browser = ["playwright>=1.47"]
 
 [project.scripts]
 radar = "radar.cli:app"
@@ -71,5 +74,5 @@ packages = ["radar"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["selectolax.*", "sentence_transformers.*", "msal.*"]
+module = ["selectolax.*", "sentence_transformers.*", "msal.*", "playwright.*"]
 ignore_missing_imports = true

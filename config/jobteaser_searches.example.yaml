@@ -1,0 +1,33 @@
+# JobTeaser (Luiss career service) connector: EXAMPLE. Copy to config/jobteaser_searches.yaml
+# (gitignored) and adjust. Read by radar.connectors.jobteaser (source "jobteaser"), which only
+# runs on your Mac with the browser profile made by `make jobteaser-login`.
+#
+# Every listing/detail URL is checked against the host's robots.txt (standard wildcard rules)
+# BEFORE it is opened; disallowed URLs are skipped and counted, never opened.
+# Placeholders: {base} = base_url, {locale}, {page} = 1, 2, ... (no {page}: one page only),
+# {q} = the search keywords (URL-encoded).
+
+base_url: https://luiss.jobteaser.com
+locale: it
+max_pages: 3        # pages per listing / search
+max_details: 40     # offer pages opened per day (new offers only)
+enrich_alerts: true # also open offers known only from JobTeaser alert emails / the seed
+
+# Luiss-reserved offers ("Offerte mirate", "Offerte dei partner"). TO CALIBRATE after login with
+# scripts/jobteaser_probe.py: the real filter parameter names are not public.
+reserved:
+  - {name: offerte-mirate, url: "{base}/{locale}/job-offers?page={page}"}
+  - {name: offerte-partner, url: "{base}/{locale}/job-offers?page={page}"}
+
+# Search URL template (TO CALIBRATE: the query parameter name may differ).
+search_url: "{base}/{locale}/job-offers?q={q}&page={page}"
+searches:
+  - data scientist
+  - AI
+  - data analyst
+  - consulting
+  - strategy
+  - venture capital
+  - fintech
+  - internship
+  - stage
