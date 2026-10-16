@@ -72,6 +72,16 @@ class ScoreOut(BaseModel):
     created_at: UTCDateTime
 
 
+class PostingSourceOut(BaseModel):
+    """One place where the job is listed (company board, JobTeaser, LinkedIn, email alert)."""
+
+    source: str
+    url: str
+    via: str | None = None
+    label: str  # Italian display label: "Sito aziendale", "JobTeaser", "LinkedIn", "Email alert"
+    listed: bool = True  # False once that source stopped listing it
+
+
 class PostingSummary(BaseModel):
     id: int
     source: str
@@ -99,6 +109,8 @@ class PostingSummary(BaseModel):
     similarity: float | None = None
     # Parsed from the "[Saltato: reason]" prefix of ``note`` (see routes/skip.py).
     skip_reason: str | None = None
+    # Every source listing this job, best link first (see pipeline/dedupe.py).
+    sources: list[PostingSourceOut] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

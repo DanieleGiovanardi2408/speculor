@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useGeneratePack, usePatchPosting, usePosting } from "../api/hooks";
 import type { PostingSummary } from "../api/types";
 import { daysUntil, formatDate, formatShortDate, relativeDays } from "../lib/format";
-import { sourceLabel } from "../lib/labels";
 import { ruleLabel } from "../lib/plain";
 import { noteBody, skipReasonOf } from "../lib/skip";
 import { Badge, FilterStateBadge, PostingStatusBadge, PriorityBadge, SimilarityBadge, UserStatusBadge } from "./Badge";
@@ -11,6 +10,7 @@ import { ExternalLink } from "./ExternalLink";
 import { Icon } from "./Icon";
 import { EvidenceSnippet } from "./Highlight";
 import { usePostingActions } from "./PostingActions";
+import { SourceChips, SourcesLine } from "./PostingSources";
 import { useToast } from "./Toast";
 
 function Deadline({ value }: { value: string | null }) {
@@ -199,7 +199,7 @@ export function PostingRow({
               <span>
                 <Deadline value={p.deadline} />
               </span>
-              <span className="hidden sm:inline">{sourceLabel(p.source)}</span>
+              <SourceChips posting={p} />
             </span>
             <span className="mt-1.5 flex flex-wrap gap-1 empty:hidden">
               <FilterStateBadge state={p.filter_state} />
@@ -268,8 +268,8 @@ export function PostingRow({
                     </div>
                   )}
                   <div className="flex gap-1">
-                    <dt className="text-ink-muted">Fonte:</dt>
-                    <dd>{sourceLabel(p.source)}</dd>
+                    <dt className="text-ink-muted">Visto la prima volta:</dt>
+                    <dd>{formatDate(p.first_seen)}</dd>
                   </div>
                   {p.similarity != null && (
                     <div className="flex gap-1">
@@ -277,10 +277,6 @@ export function PostingRow({
                       <dd>{p.similarity.toFixed(2).replace(".", ",")}</dd>
                     </div>
                   )}
-                  <div className="flex gap-1">
-                    <dt className="text-ink-muted">Visto la prima volta:</dt>
-                    <dd>{formatDate(p.first_seen)}</dd>
-                  </div>
                 </dl>
               </div>
             ) : (
@@ -334,6 +330,8 @@ export function PostingRow({
                 </ul>
               </div>
             )}
+
+            <SourcesLine posting={p} />
 
             <div className="flex flex-wrap gap-2">
               <ExternalLink href={p.url} className="btn-secondary">

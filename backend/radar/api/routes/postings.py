@@ -23,6 +23,7 @@ from radar.api.routes.common import (
 )
 from radar.api.routes.skip import compose_note, split_skip
 from radar.models import Application, ApplicationPack, Contact, FilterResult, Posting
+from radar.pipeline.dedupe import public_sources
 from radar.pipeline.filters import POST_GRADUATION_ID
 from radar.timeutil import utcnow
 
@@ -58,7 +59,6 @@ def list_postings(
         (Posting.zone, zone),
         (Posting.type, type_),
         (Posting.status, status_),
-        (Posting.source, source),
         (Posting.user_status, user_status),
     ):
         values = _multi(raw)
@@ -73,7 +73,11 @@ def list_postings(
                 func.lower(func.coalesce(col(Posting.location), "")).like(like),
             )
         )
-    items = summaries(session, session.exec(stmt).all())
+    rows = session.exec(stmt).all()
+    wanted_sources = set(_multi(source))
+    if wanted_sources:  # any source of the job (a LinkedIn-first job also listed on the board)
+        rows = [p for p in rows if wanted_sources & {e["source"] for e in public_sources(p)}]
+    items = summaries(session, rows)
     if track != "all":
         items = [s for s in items if s.track == track]
     wanted = _multi(priority)

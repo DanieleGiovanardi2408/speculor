@@ -16,7 +16,7 @@ from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from radar.connectors.http import html_to_text
-from radar.pipeline.normalize import canonical_url
+from radar.pipeline.normalize import tidy_url
 
 # Query parameters that can carry the real target of a click-tracking redirect
 # (Outlook safelinks ``url``, Google ``q``, generic ``u``/``target``/``redirect`` ...).
@@ -35,7 +35,7 @@ _REDIRECT_KEYS = (
     "to",
     "r",
 )
-# Tracking/identity params that normalize.canonical_url does not already drop.
+# Tracking/identity params that normalize.tidy_url does not already drop.
 _EXTRA_TRACKING = re.compile(
     r"^(lipi|midToken|midSig|trkEmail|eid|otpToken|mc_cid|mc_eid|_hsenc|_hsmi|fbclid|gclid|"
     r"dclid|msclkid|token|sig|signature|upn|email|e|uid|user_id|recipient|campaign|cid|"
@@ -145,10 +145,10 @@ def unwrap_url(href: str, is_target: Callable[[str], bool] | None = None) -> str
 
 
 def strip_tracking(url: str) -> str:
-    """Drop tracking params (beyond those canonical_url drops) and canonicalize."""
+    """Drop tracking params (beyond those tidy_url drops) and tidy the URL."""
     parts = urlsplit(url)
     query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if not _EXTRA_TRACKING.match(k)])
-    return canonical_url(urlunsplit((parts.scheme, parts.netloc, parts.path, query, "")))
+    return tidy_url(urlunsplit((parts.scheme, parts.netloc, parts.path, query, "")))
 
 
 def clean_url(href: str, is_target: Callable[[str], bool] | None = None) -> str:

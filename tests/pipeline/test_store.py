@@ -63,7 +63,7 @@ def test_reopened(session: Session) -> None:
     assert "reopened" in [e.kind for e in events(session, p.id or 0)]
 
 
-def test_dedupe_same_url_prefers_ats_over_linkedin(session: Session) -> None:
+def test_dedupe_same_url_keeps_first_id_and_takes_ats_link(session: Session) -> None:
     li = upsert_raw(
         session,
         raw(
@@ -80,10 +80,10 @@ def test_dedupe_same_url_prefers_ats_over_linkedin(session: Session) -> None:
     gh = upsert_raw(
         session, raw("9", url="https://www.linkedin.com/jobs/view/123/"), now=T1
     ).posting
-    assert gh.duplicate_of is None
     session.refresh(li)
-    session.refresh(li2)
-    assert li.duplicate_of == gh.id and li2.duplicate_of == gh.id
+    # the better source arrives later: the original id stays primary, the others point at it
+    assert li.duplicate_of is None and gh.duplicate_of == li.id and li2.duplicate_of == li.id
+    assert {e["uid"] for e in li.sources or []} == {"linkedin:li1", "linkedin:li2", "greenhouse:9"}
 
 
 def test_dedupe_key_across_sources(session: Session) -> None:
@@ -96,8 +96,9 @@ def test_dedupe_key_across_sources(session: Session) -> None:
         session, raw("77", title="AI Engineer Intern (m/f/d)", company="Acme SpA"), now=T1
     )
     assert gh.is_duplicate and gh.posting.duplicate_of == seed.id
+    # a second board job with the same title is another opening, not the same job
     other = upsert_raw(session, raw("78", title="AI Engineer Intern"), now=T1)
-    assert other.posting.duplicate_of == seed.id  # matches the seed (other source)
+    assert other.posting.duplicate_of is None
     # same key within one source is NOT a duplicate (different jobs, same title)
     same_src = upsert_raw(
         session,

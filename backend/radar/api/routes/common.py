@@ -24,6 +24,7 @@ from radar.models import (
     Posting,
     Score,
 )
+from radar.pipeline.dedupe import public_sources
 from radar.timeutil import utcnow
 
 PRIORITY_RANK = {"Alta": 0, "Media": 1, "Bassa": 2}
@@ -170,6 +171,7 @@ def _summary_fields(
         "has_pack": has_pack,
         "similarity": p.similarity,
         "skip_reason": split_skip(p.note)[0],
+        "sources": [schemas.PostingSourceOut(**e) for e in public_sources(p)],
     }
 
 
