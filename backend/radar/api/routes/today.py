@@ -65,9 +65,14 @@ def today_view(session: SessionDep) -> schemas.Today:
         .order_by(col(Run.started_at).desc(), col(Run.id).desc())
     ).first()
 
-    new_postings = _relevant(session, _event_posting_ids(session, finished_run, "new"))
+    # New postings and upcoming deadlines are the internship track; post-graduation roles
+    # are only counted (they have their own view).
+    new_all = summaries(
+        session, _relevant(session, _event_posting_ids(session, finished_run, "new"))
+    )
+    new_internships = [s for s in new_all if s.track == "internship"]
     closed_postings = _relevant(session, _event_posting_ids(session, finished_run, "closed"))
-    upcoming = session.exec(
+    upcoming_rows = session.exec(
         select(Posting).where(
             Posting.status == "open",
             Posting.user_status == "todo",
@@ -77,6 +82,7 @@ def today_view(session: SessionDep) -> schemas.Today:
             col(Posting.deadline) <= today + timedelta(days=UPCOMING_DAYS),
         )
     ).all()
+    upcoming = [s for s in summaries(session, upcoming_rows) if s.track == "internship"]
 
     apps_week = session.exec(
         select(func.count())
@@ -99,9 +105,10 @@ def today_view(session: SessionDep) -> schemas.Today:
     return schemas.Today(
         weekly_goal=weekly_goal(session),
         applications_this_week=apps_week,
-        new_since_yesterday=sort_summaries(summaries(session, new_postings)),
+        new_since_yesterday=sort_summaries(new_internships),
+        new_post_graduation=len(new_all) - len(new_internships),
         closed_since_yesterday=sort_summaries(summaries(session, closed_postings)),
-        upcoming_deadlines=sort_summaries(summaries(session, upcoming), "deadline"),
+        upcoming_deadlines=sort_summaries(upcoming, "deadline"),
         followups_due=[application_out(a, today) for a in due],
         pending_approvals=pending,
         last_run=run_out(last_run) if last_run else None,

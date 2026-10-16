@@ -4,6 +4,9 @@
 ``apply_filters`` / ``apply_filters_all`` persist hits as ``FilterResult`` rows and set
 ``Posting.filter_state`` (rejected > flagged > pass; a manual override is never undone).
 
+The ``post_graduation`` flag marks graduate programmes / full-time roles that start after
+graduation. It is not an exclusion: the API shows those postings in their own track.
+
 Pattern lists live in YAML (see ``config/rules.example.yaml``); structural logic (start-date
 parsing, experience years, country codes, language detection) is code parameterised by it.
 """
@@ -28,6 +31,9 @@ _FLAGS = re.IGNORECASE | re.UNICODE
 _BOUNDARY = re.compile(r"\n|\||[.;!?](?=\s|$)")
 
 YearMonth = tuple[int, int]
+
+POST_GRADUATION_ID = "post_graduation"
+"""Rule id of the post-graduation flag (the API's ``track`` is derived from it)."""
 
 
 class PostingLike(Protocol):
@@ -108,6 +114,7 @@ class _Period:
     months: tuple[int, int]
     needs_year: bool
     regex: re.Pattern[str]
+    words: tuple[str, ...] = ()
 
 
 @dataclass
@@ -190,6 +197,27 @@ class EnrollmentRule:
 
 
 @dataclass
+class PostGraduationRule:
+    action: str
+    graduation: YearMonth  # the user's graduation month: starts after it are post-graduation
+    reasons: dict[str, str]
+    kinds: dict[str, str]
+    internship_patterns: list[re.Pattern[str]]
+    internship_types: set[str]
+    graduate_types: set[str]
+    graduate_title_patterns: list[re.Pattern[str]]
+    graduate_text_patterns: list[re.Pattern[str]]
+    open_to_students: list[re.Pattern[str]]
+    fulltime_types: set[str]
+    fulltime_patterns: list[re.Pattern[str]]
+    after_graduation: list[re.Pattern[str]]
+    after_graduation_unless: list[re.Pattern[str]]
+    text_fields: list[str]
+    trailing_start: re.Pattern[str] | None  # "<month|season|year> intake/start"
+    supersedes: set[str]
+
+
+@dataclass
 class Rules:
     evidence_chars: int = 200
     regex_rules: list[RegexRule] = field(default_factory=list)
@@ -199,6 +227,7 @@ class Rules:
     languages: LanguageRule | None = None
     posting_language: PostingLanguageRule | None = None
     enrollment: EnrollmentRule | None = None
+    post_graduation: PostGraduationRule | None = None
     fingerprint: str = ""
 
 
@@ -219,7 +248,8 @@ def _compile_start(s: Mapping[str, Any]) -> StartRule:
         rx = _rx(
             rf"(?<!real\s)\b(?:{alt})\b(?:\s+(?:of\s+|del\s+|de\s+|di\s+|dell'))?\s*(?P<y>20\d{{2}})?"
         )
-        periods.append(_Period(str(name), (lo, hi), bool(p.get("needs_year", False)), rx))
+        words = tuple(str(w) for w in p.get("words") or [])
+        periods.append(_Period(str(name), (lo, hi), bool(p.get("needs_year", False)), rx, words))
     month_alt = _alternation(month_of)
     sep = r"(?:-|–|/|to|until|till|through|a|al|e|o|or|and|bis|à|au|et|ou|y|hasta|tot)"
     month_rx = _rx(
@@ -270,6 +300,41 @@ def _compile_languages(s: Mapping[str, Any]) -> LanguageRule:
         patterns=patterns,
         soft=_rx_list(s.get("soft")),
         alternatives_before=_rx_list(s.get("alternatives_before")),
+    )
+
+
+def _compile_post_graduation(s: Mapping[str, Any], start: StartRule | None) -> PostGraduationRule:
+    trailing: re.Pattern[str] | None = None
+    keywords = [str(k) for k in s.get("trailing_start_keywords") or []]
+    if start is not None and keywords:
+        words = list(start.month_of)
+        words += [w for p in start.periods if not p.needs_year for w in p.words]
+        # Short words ("may", "mar", "set") only count with a year: "you may start".
+        long_alt = _alternation(w for w in words if len(w) >= 4)
+        short_alt = _alternation(words)
+        year = r"\s*,?\s*(?:of\s+)?20\d{2}"
+        trailing = _rx(
+            rf"(?P<when>\b(?:{long_alt})\b\.?(?:{year})?|\b(?:{short_alt})\b\.?{year}"
+            rf"|\b20\d{{2}})\s*[-–]?\s*(?:{'|'.join(keywords)})"
+        )
+    return PostGraduationRule(
+        action=str(s.get("action", "flag")),
+        graduation=_ym(s.get("graduation", "2027-07")),
+        reasons=dict(s.get("reasons") or {}),
+        kinds=dict(s.get("kinds") or {}),
+        internship_patterns=_rx_list(s.get("internship_patterns")),
+        internship_types={str(t) for t in s.get("internship_types") or []},
+        graduate_types={str(t) for t in s.get("graduate_types") or []},
+        graduate_title_patterns=_rx_list(s.get("graduate_title_patterns")),
+        graduate_text_patterns=_rx_list(s.get("graduate_text_patterns")),
+        open_to_students=_rx_list(s.get("open_to_students_patterns")),
+        fulltime_types={str(t) for t in s.get("fulltime_types") or []},
+        fulltime_patterns=_rx_list(s.get("fulltime_patterns")),
+        after_graduation=_rx_list(s.get("after_graduation_patterns")),
+        after_graduation_unless=_rx_list(s.get("after_graduation_unless")),
+        text_fields=list(s.get("fields") or ["title", "start_info", "raw_text"]),
+        trailing_start=trailing,
+        supersedes={str(x) for x in s.get("supersedes") or []},
     )
 
 
@@ -346,6 +411,9 @@ def compile_rules(cfg: Mapping[str, Any]) -> Rules:
             types={str(t) for t in en.get("internship_types") or []},
             patterns=_rx_list(en.get("internship_patterns")),
         )
+    if _enabled(pg := cfg.get("post_graduation")):
+        assert isinstance(pg, Mapping)
+        rules.post_graduation = _compile_post_graduation(pg, rules.start)
     return rules
 
 
@@ -610,12 +678,25 @@ def _classify(rule: StartRule, months: tuple[YearMonth, ...]) -> str:
     return "late"
 
 
-def _eval_start(rule: StartRule, posting: PostingLike, ref: date, max_chars: int) -> Hit | None:
+def _start_is_flexible(rule: StartRule, posting: PostingLike) -> bool:
     for name in rule.fields:
         text = _field(posting, name)
         if text and _any(rule.flexible, text):
-            return None
-    mentions = _start_mentions(rule, posting, ref, max_chars)
+            return True
+    return False
+
+
+def _eval_start(
+    rule: StartRule,
+    posting: PostingLike,
+    ref: date,
+    max_chars: int,
+    mentions: list[_Mention] | None = None,
+) -> Hit | None:
+    if _start_is_flexible(rule, posting):
+        return None
+    if mentions is None:
+        mentions = _start_mentions(rule, posting, ref, max_chars)
     if not mentions:
         return Hit(
             rule.ids.get("not_stated", "start_not_stated"),
@@ -851,6 +932,157 @@ def _eval_enrollment(
 
 
 # --------------------------------------------------------------------------------------
+# Post-graduation roles (graduate programmes / full-time roles starting after graduation)
+# --------------------------------------------------------------------------------------
+
+
+def _role_kind(rule: PostGraduationRule, posting: PostingLike, max_chars: int) -> tuple[str, str]:
+    """("graduate" | "fulltime" | "", evidence). Internships are never post-graduation."""
+    title = _field(posting, "title")
+    ptype = posting.type or ""
+    grad_title = _any(rule.graduate_title_patterns, title)
+    if _any(rule.internship_patterns, title):
+        return "", ""
+    if ptype in rule.internship_types and not grad_title:
+        return "", ""
+    if grad_title or ptype in rule.graduate_types:
+        return "graduate", title[:max_chars]
+    for name in rule.text_fields:
+        if name == "title":
+            continue
+        text = _field(posting, name)
+        m = _any(rule.graduate_text_patterns, text) if text else None
+        if m:
+            return "graduate", _snippet(text, m.start(), m.end(), max_chars)
+    if ptype in rule.fulltime_types:
+        return "fulltime", title[:max_chars]
+    for name in rule.text_fields:
+        text = _field(posting, name)
+        m = _any(rule.fulltime_patterns, text) if text else None
+        if m:
+            return "fulltime", _snippet(text, m.start(), m.end(), max_chars)
+    return "", ""
+
+
+def _trailing_mentions(
+    rule: PostGraduationRule, start: StartRule, posting: PostingLike, ref: date, max_chars: int
+) -> list[_Mention]:
+    """Dates written before the keyword: "September 2027 intake", "Autumn start"."""
+    if rule.trailing_start is None:
+        return []
+    out: list[_Mention] = []
+    for name in rule.text_fields:
+        text = _field(posting, name)
+        for m in rule.trailing_start.finditer(text) if text else ():
+            parsed = _parse_period(
+                start, m.group("when"), ref, require_year=False, allow_bare_year=True
+            )
+            if parsed:
+                ev = _snippet(text, m.start(), m.end(), max_chars)
+                out.append(_Mention(parsed[1], _label(parsed[1]), ev))
+    return out
+
+
+def _whole_year(months: tuple[YearMonth, ...]) -> bool:
+    return months[0][1] == 1 and months[-1] == (months[0][0], 12)
+
+
+def _eval_post_graduation(
+    rule: PostGraduationRule,
+    start: StartRule | None,
+    posting: PostingLike,
+    ref: date,
+    max_chars: int,
+    mentions: list[_Mention],
+) -> Hit | None:
+    kind, kind_evidence = _role_kind(rule, posting, max_chars)
+    if not kind:
+        return None
+    label = rule.kinds.get(kind, kind)
+    flexible = start is not None and _start_is_flexible(start, posting)
+    if start is not None and not flexible:
+        mentions = mentions + _trailing_mentions(rule, start, posting, ref, max_chars)
+    else:
+        mentions = []
+    y, m = rule.graduation
+    after: YearMonth = (y + 1, 1) if m == 12 else (y, m + 1)
+
+    # (a) start after graduation. For a graduate programme, a bare "2027 start" means the
+    # autumn intake, so a whole-year mention from the graduation year on counts too.
+    def specific(mention: _Mention) -> bool:
+        return not (kind == "graduate" and _whole_year(mention.months))
+
+    # A flexible start ("ASAP", "rolling") could be Feb-Apr 2027: same as an in-window start.
+    ok = flexible or (
+        start is not None
+        and any(specific(x) and _classify(start, x.months) == "ok" for x in mentions)
+    )
+    dated = [
+        x
+        for x in mentions
+        if x.months[0] >= after
+        or (not specific(x) and x.months[0][0] >= y and not any(specific(o) for o in mentions))
+    ]
+    if dated and not ok:
+        return Hit(
+            POST_GRADUATION_ID,
+            rule.action,
+            _fmt(
+                rule.reasons.get("dated", "post-graduation {kind} (start {when})"),
+                kind=label,
+                when=dated[0].label,
+            ),
+            dated[0].evidence,
+        )
+
+    # (b) explicitly for people who already graduated
+    for name in rule.text_fields:
+        text = _field(posting, name)
+        if not text:
+            continue
+        for pattern in rule.after_graduation:
+            for hit in pattern.finditer(text):
+                before, after_ctx = _sentence(text, hit.start(), hit.end(), 100)
+                if _any(rule.after_graduation_unless, before + hit.group(0) + after_ctx):
+                    continue
+                # "February or August 2027: August is after graduation" -> the phrase is
+                # about the later intake; the in-window one stays open.
+                if ok and start is not None:
+                    near = before[-40:] + " " + after_ctx[:40]
+                    if any(
+                        (
+                            x := _parse_period(
+                                start, mm.group(0), ref, require_year=False, allow_bare_year=False
+                            )
+                        )
+                        and x[1][0] >= after
+                        for mm in start.month_rx.finditer(near)
+                    ):
+                        continue
+                return Hit(
+                    POST_GRADUATION_ID,
+                    rule.action,
+                    _fmt(
+                        rule.reasons.get("after_graduation", "post-graduation {kind}"), kind=label
+                    ),
+                    _snippet(text, hit.start(), hit.end(), max_chars),
+                )
+
+    # (c) graduate programme with no start date
+    open_to_students = any(
+        _any(rule.open_to_students, _field(posting, name)) for name in rule.text_fields
+    )
+    if kind == "graduate" and not mentions and not flexible and not open_to_students:
+        return Hit(
+            POST_GRADUATION_ID,
+            rule.action,
+            _fmt(rule.reasons.get("undated", "post-graduation: {kind}"), kind=label),
+            kind_evidence or None,
+        )
+    return None
+
+
+# --------------------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------------------
 
@@ -867,7 +1099,16 @@ def evaluate(
         hit = _eval_regex_rule(rule, posting, max_chars)
         if hit:
             hits.append(hit)
-    if compiled.start and (hit := _eval_start(compiled.start, posting, ref, max_chars)):
+    mentions: list[_Mention] = []
+    if compiled.start:
+        if not _start_is_flexible(compiled.start, posting):
+            mentions = _start_mentions(compiled.start, posting, ref, max_chars)
+        if hit := _eval_start(compiled.start, posting, ref, max_chars, mentions):
+            hits.append(hit)
+    pg = compiled.post_graduation
+    if pg and (hit := _eval_post_graduation(pg, compiled.start, posting, ref, max_chars, mentions)):
+        # A post-graduation role is one finding: drop the internship-window start hits.
+        hits = [h for h in hits if h.rule_id not in pg.supersedes]
         hits.append(hit)
     if compiled.experience and (hit := _eval_experience(compiled.experience, posting, max_chars)):
         hits.append(hit)
@@ -919,7 +1160,8 @@ def apply_filters(
                 action=hit.action,
                 reason=hit.reason,
                 evidence=hit.evidence,
-                overridden=overridden and hit.action == "reject",
+                overridden=overridden
+                and (hit.action == "reject" or hit.rule_id == POST_GRADUATION_ID),
             )
         )
     if not overridden:

@@ -46,6 +46,7 @@ start_date:
     - '\bintake\b'
     - '\bcohorts?\b'
     - '\binizi(?:o|a|ano|era|erà|are)\b'
+    - '\b(?<!a\s)partire\b'
     - '\bpartenz[ae]\b'
     - '\bingresso\b'
     - '\bdecorrenza\b'
@@ -312,6 +313,134 @@ enrollment:
     - '\btrainee\w*'
     - '\btirocini\w*'
     - '\balternance\b'
+
+# ---------------------------------------------------------------------------------------
+# Post-graduation roles -> flag `post_graduation` (shown in their own view, not an exclusion)
+# ---------------------------------------------------------------------------------------
+# Fires when the posting is a graduate programme or a full-time / permanent role AND
+#   (a) its start is after `graduation` ("September 2027 intake", "2028 start"; for a
+#       graduate programme a bare "2027 start" counts too), or
+#   (b) it is explicitly for people who already graduated ("start after graduation",
+#       "recent graduates", "neolaureati"), or
+#   (c) it is a graduate programme with no start date.
+# Internships (title matches `internship_patterns`, or seed type in `internship_types`) are
+# never post-graduation. When it fires, the internship-window start hits in `supersedes` are
+# dropped (one finding per posting). The rule id is fixed: the API's `track` depends on it.
+post_graduation:
+  enabled: true
+  action: flag
+  graduation: '2027-07'     # MSc graduation; starts from the month after are post-graduation
+  fields: [title, start_info, raw_text]
+  kinds:
+    graduate: graduate programme
+    fulltime: full-time role
+  reasons:
+    dated: 'post-graduation {kind} (start {when})'
+    after_graduation: 'post-graduation {kind} (for graduates / starts after graduation)'
+    undated: 'post-graduation: {kind}, no start date'
+  supersedes: [start_after_window, start_not_stated, start_summer_only]
+  # Dates written before the keyword ("September 2027 intake", "autumn start").
+  trailing_start_keywords:
+    - 'intakes?\b'
+    - 'start(?:s|ing)?\b(?!-?up)'
+    - 'cohorts?\b'
+    - 'entry\b'
+    - 'ingresso\b'
+    - 'edition\b'
+  # Title only. Checked first: an internship that mentions graduates stays an internship.
+  internship_patterns:
+    - '\bintern\w*'
+    - '\bstage\b'
+    - '\bstag(?:e|i)aire\w*'
+    - '\btirocin\w*'
+    - '\bpraktik\w*'
+    - '\bwerkstudent\w*'
+    - '\bworking\s+students?\b'
+    - '\bstudents?\b'
+    - '\bthesis\b'
+    - '\btesi\b'
+    - '\bpr[áa]cticas\b'
+    - '\bbecari[oa]\b'
+    - '\balternan(?:ce|t)\b'
+    - '\bapprenti\w*'
+    - '\bplacements?\b'
+    - '\boff[- ]cycle\b'
+    - '\bsummer\s+(?:analysts?|associates?|program(?:me)?s?|schools?)\b'
+    - '\b(?:spring|insight)\s+(?:weeks?|days?|program(?:me)?s?)\b'
+  internship_types: [Stage]
+  graduate_types: [Graduate]
+  graduate_title_patterns:
+    - '\bgraduates?\b'
+    - '\bnew[- ]grads?\b'
+    - '\btrainee\s+(?:program(?:me)?s?|scheme)\b'
+    - '\bearly[- ]careers?\s+program(?:me)?s?\b'
+    - '\b(?:neo)?laureat[ie]\b'
+    - '\bneolaureat\w*'
+    - '\bprogramm[ai]\s+(?:per\s+)?(?:neo)?laureat\w*'
+    - '\bjeunes?\s+dipl[ôo]m[ée]s?\b'
+    - '\bberufseinsteiger\w*'
+    - '\bdirect[- ]entry\b'
+  # Searched in start_info / raw_text when the title does not say it.
+  graduate_text_patterns:
+    - '\b(?:this|our|the)\s+(?:\w+\s+){0,3}?graduate\s+(?:program(?:me)?|scheme)\s+(?:is|lasts|runs|starts|offers|consists|includes|combines|will)\b'
+    - '\b(?:join|joining|apply\s+(?:to|for))\s+(?:our|the)\s+(?:\w+\s+){0,3}?graduate\s+(?:program(?:me)?|scheme)\b'
+    - '\bprogramm[ai]\s+(?:per\s+)?(?:neo)?laureat\w*'
+  # Anywhere in the posting: a graduate programme that takes students who are still
+  # enrolled is not post-graduation by itself (blocks case (c) only).
+  open_to_students_patterns:
+    - '\baccett\w*\s+(?:anche\s+)?(?:la\s+|i\s+|gli\s+)?(?:magistrale|laurea|studenti|laureandi)\b'
+    - '\b(?:magistrale|laurea|studi)\s+in\s+corso\b'
+    - '\blaureand\w*'
+    - '\baperto\s+(?:anche\s+)?a\s+studenti\b'
+    - '\bancora\s+iscritt\w*'
+    - '\bidone[oa]\s+da\b'
+    - '\b(?:final|last)[- ]year\s+(?:students?|undergraduates?|of\s+(?:your|their)\s+(?:studies|degree))\b'
+    - '\b(?:currently|still)\s+(?:enrolled|pursuing|studying)\b'
+    - '\b(?:graduating|expected\s+to\s+graduate|expected\s+graduation)\s+(?:in\s+|by\s+)?(?:\w+\s+)?2027\b'
+  fulltime_types: [Lavoro]
+  fulltime_patterns:
+    - '\bfull[- ]time\b'
+    - '\bpermanent\b'
+    - '\btempo\s+(?:pieno\s+e\s+)?indeterminato\b'
+    - '\bCDI\b'
+    - '\bcontrat\s+[àa]\s+dur[ée]e\s+ind[ée]termin[ée]e\b'
+    - '\bunbefristet\w*'
+    - '\bfestanstellung\b'
+    - '\bindefinido\b'
+  after_graduation_patterns:
+    - '\b(?:after|upon|following)\s+(?:your\s+|you\s+|the\s+)?(?:graduat\w*|completing\s+your\s+(?:\w+\s+)?(?:degree|studies))'
+    - '\bpost[- ]graduation\b'
+    - '\bonce\s+you\s+(?:have\s+)?(?:graduat\w*|completed?\s+your\s+(?:\w+\s+)?(?:degree|studies))'
+    - '\bmust\s+(?:already\s+)?have\s+(?:already\s+)?(?:graduated|completed\s+(?:your|a|their)\s+(?:\w+\s+){0,3}?degree)'
+    - '\b(?:have|having)\s+(?:already\s+|recently\s+|successfully\s+)?(?:graduated|completed\s+(?:your|a|their)\s+(?:\w+\s+){0,3}?(?:degree|studies))\b'
+    - '\b(?:recent|recently)\s+(?:university\s+|college\s+)?graduat\w*'
+    - '\bgraduated\s+(?:within|in)\s+the\s+(?:last|past)\b'
+    - '\balready\s+graduated\b'
+    - '\bcompleted\s+(?:\w+\s+){0,3}?degree\s+(?:by|before|prior\s+to)\s+(?:the\s+)?(?:start|joining|your\s+start)'
+    - '\bdegree\s+(?:must\s+be\s+|should\s+be\s+)?(?:completed|obtained|awarded)\s+(?:by|before|prior\s+to)\b'
+    - '\b(?:a\s+)?completed\s+(?:bachelor|master|msc|bsc|university)\w*''?s?\s+(?:degree\b)?'
+    - '\bneolaureat\w*'
+    - '\blaureat[ie]\b'
+    - '\bdopo\s+(?:la\s+|il\s+conseguimento\s+della\s+)?laurea\b'
+    - '\b(?:aver|avere)\s+(?:gi[àa]\s+)?conseguito\s+(?:la\s+)?laurea\b'
+    - '\blaurea\s+(?:gi[àa]\s+)?conseguita\b'
+    - '\bjeunes?\s+dipl[ôo]m[ée]s?\b'
+    - '\bapr[èe]s\s+(?:votre|l[ae]|l'')\s*(?:dipl[ôo]me|obtention)'
+    - '\babgeschlossene[sn]?\s+(?:\w+)?studium\b'
+    - '\bnach\s+(?:dem|deinem|ihrem)\s+(?:studium|abschluss)\b'
+    - '\breci[ée]n\s+(?:graduad|titulad|licenciad)\w*'
+  # Same sentence: still studying / graduating in time -> not a post-graduation signal.
+  after_graduation_unless:
+    - '\b(?:final|last)[- ]year\b|\bultimo\s+anno\b'
+    # graduates of a range that includes 2027 ("Laureati 2025-2027", "class of 2027")
+    - '\b(?:laureat\w*|graduat\w*|class\s+of)\s+(?:\w+\s+){0,2}?(?:20\d{2}\s*[-–/]\s*)?2027\b'
+    - '\bgraduating\b'
+    - '\b(?:about|soon|expected|due)\s+to\s+graduat\w*'
+    - '\bcurrently\s+(?:enrolled|pursuing|studying)\b'
+    - '\b(?:pursuing|enrolled)\b'
+    - '\b(?:ongoing|in\s+progress)\b'
+    - '\blaureand\w*'
+    - '\bin\s+corso\s+di\s+laurea\b|\bstudent[ie]\b|\bstudents?\b'
 
 # ---------------------------------------------------------------------------------------
 # Plain regex rules

@@ -13,6 +13,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session, SQLModel, col, select
 
 from radar.api import schemas
+from radar.api.routes.skip import split_skip
 from radar.models import (
     Application,
     ApplicationPack,
@@ -167,6 +168,7 @@ def _summary_fields(
             for h in hits
         ],
         "has_pack": has_pack,
+        "skip_reason": split_skip(p.note)[0],
     }
 
 

@@ -19,7 +19,9 @@ from radar.api.routes.common import (
     sort_summaries,
     summaries,
 )
+from radar.api.routes.skip import compose_note, split_skip
 from radar.models import Application, ApplicationPack, FilterResult, Posting
+from radar.pipeline.filters import POST_GRADUATION_ID
 from radar.timeutil import utcnow
 
 router = APIRouter(prefix="/postings", tags=["postings"])
@@ -43,6 +45,7 @@ def list_postings(
     sort: schemas.PostingSort = "priority",
     include_rejected: bool = False,
     only_rejected: bool = False,
+    track: schemas.TrackFilter = "internship",
 ) -> list[schemas.PostingSummary]:
     stmt = select(Posting).where(col(Posting.duplicate_of).is_(None))
     if only_rejected:
@@ -69,6 +72,8 @@ def list_postings(
             )
         )
     items = summaries(session, session.exec(stmt).all())
+    if track != "all":
+        items = [s for s in items if s.track == track]
     wanted = _multi(priority)
     if wanted:
         want_unscored = "none" in {w.lower() for w in wanted}
@@ -117,8 +122,18 @@ def patch_posting(
     if "status" in fields and body.status is not None and body.status != posting.status:
         posting.status = body.status
         posting.closed_at = utcnow() if body.status == "closed" else None
+    # Skip reasons live in a "[Saltato: reason]" note prefix (no extra column).
+    reason, note_body = split_skip(posting.note)
     if "note" in fields:
-        posting.note = body.note or None
+        given_reason, note_body = split_skip(body.note)
+        reason = given_reason or reason
+    if body.skip_reason and body.skip_reason.strip():
+        reason = body.skip_reason.strip()
+        if body.user_status is None:
+            posting.user_status = "skipped"
+    if posting.user_status != "skipped":
+        reason = None
+    posting.note = compose_note(reason, note_body)
     session.add(posting)
     session.commit()
     session.refresh(posting)
@@ -127,16 +142,41 @@ def patch_posting(
 
 @router.post("/{posting_id}/override", response_model=schemas.PostingDetail)
 def override_posting(posting_id: int, session: SessionDep) -> schemas.PostingDetail:
+    """Keep it anyway: reject hits and a post_graduation flag (-> internship track) are
+    marked overridden."""
     posting = get_or_404(session, Posting, posting_id, "Posting")
     hits = session.exec(
         select(FilterResult).where(
-            FilterResult.posting_id == posting_id, FilterResult.action == "reject"
+            FilterResult.posting_id == posting_id,
+            or_(
+                col(FilterResult.action) == "reject",
+                col(FilterResult.rule_id) == POST_GRADUATION_ID,
+            ),
         )
     ).all()
     for hit in hits:
         hit.overridden = True
         session.add(hit)
     posting.filter_state = "overridden"
+    session.add(posting)
+    session.commit()
+    session.refresh(posting)
+    return detail(session, posting)
+
+
+@router.delete("/{posting_id}/override", response_model=schemas.PostingDetail)
+def undo_override(posting_id: int, session: SessionDep) -> schemas.PostingDetail:
+    """Undo a restore: reject hits count again and the posting goes back to "rejected"."""
+    posting = get_or_404(session, Posting, posting_id, "Posting")
+    hits = session.exec(select(FilterResult).where(FilterResult.posting_id == posting_id)).all()
+    for hit in hits:
+        if hit.overridden:
+            hit.overridden = False
+            session.add(hit)
+    if any(h.action == "reject" for h in hits):
+        posting.filter_state = "rejected"
+    elif posting.filter_state == "overridden":
+        posting.filter_state = "flagged" if any(h.action == "flag" for h in hits) else "pass"
     session.add(posting)
     session.commit()
     session.refresh(posting)

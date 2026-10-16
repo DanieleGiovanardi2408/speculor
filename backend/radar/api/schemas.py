@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, computed_field
+
+from radar.pipeline.filters import POST_GRADUATION_ID
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -37,6 +39,8 @@ Stage = Literal[
 ChangeKind = Literal["new", "changed", "closed", "reopened"]
 RunStatus = Literal["running", "ok", "partial", "failed"]
 PostingSort = Literal["priority", "deadline", "company", "first_seen"]
+Track = Literal["internship", "post_graduation"]
+TrackFilter = Literal["internship", "post_graduation", "all"]
 
 
 # --- outputs -----------------------------------------------------------------------------
@@ -91,6 +95,16 @@ class PostingSummary(BaseModel):
     score: ScoreOut | None
     filter_hits: list[FilterHit]
     has_pack: bool
+    # Parsed from the "[Saltato: reason]" prefix of ``note`` (see routes/skip.py).
+    skip_reason: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def track(self) -> Track:
+        """``post_graduation`` when a non-overridden post_graduation hit exists."""
+        if any(h.rule_id == POST_GRADUATION_ID and not h.overridden for h in self.filter_hits):
+            return "post_graduation"
+        return "internship"
 
 
 class ChangeEventOut(BaseModel):
@@ -198,10 +212,41 @@ class RunSummary(BaseModel):
     stats: dict[str, Any] | None
 
 
+class RunDetail(RunSummary):
+    report_md: str | None
+
+
+class UsageRow(BaseModel):
+    day: date
+    provider: str
+    model: str
+    purpose: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+
+
+class UsageTotal(BaseModel):
+    provider: str
+    model: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+
+
+class UsageOut(BaseModel):
+    since: date
+    until: date
+    rows: list[UsageRow]
+    today: list[UsageTotal]
+    period: list[UsageTotal]
+
+
 class Today(BaseModel):
     weekly_goal: int
     applications_this_week: int
-    new_since_yesterday: list[PostingSummary]
+    new_since_yesterday: list[PostingSummary]  # internship track only
+    new_post_graduation: int = 0  # new postings on the post_graduation track (count only)
     closed_since_yesterday: list[PostingSummary]
     upcoming_deadlines: list[PostingSummary]
     followups_due: list[ApplicationOut]
@@ -241,6 +286,8 @@ class PostingPatch(BaseModel):
     user_status: UserStatus | None = None
     status: PostingStatus | None = None
     note: str | None = None
+    # Non-empty: user_status becomes "skipped" and the reason is stored as a note prefix.
+    skip_reason: str | None = Field(default=None, max_length=200)
 
 
 class MarkSent(BaseModel):

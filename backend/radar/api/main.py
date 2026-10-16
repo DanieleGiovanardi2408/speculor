@@ -26,6 +26,7 @@ from radar.api.routes import (
     runs,
     settings,
     today,
+    usage,
 )
 from radar.config import REPO_ROOT, get_settings
 from radar.db import init_db
@@ -57,7 +58,18 @@ def create_app() -> FastAPI:
         return schemas.Health(status="ok")
 
     api = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
-    modules = (today, postings, packs, contacts, drafts, applications, companies, settings, runs)
+    modules = (
+        today,
+        postings,
+        packs,
+        contacts,
+        drafts,
+        applications,
+        companies,
+        settings,
+        runs,
+        usage,
+    )
     for module in modules:
         api.include_router(module.router)
     app.include_router(api)

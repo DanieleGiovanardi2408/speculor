@@ -33,7 +33,9 @@ interface PostingSummary {
   score: ScoreOut | null;
   filter_hits: FilterHit[];             // flags and rejections
   has_pack: boolean;
+  track: Track;                         // computed from filter_hits, see "Tracks" below
 }
+type Track = "internship" | "post_graduation";
 interface ChangeEventOut { kind: "new" | "changed" | "closed" | "reopened";
   changes: Record<string, [unknown, unknown]> | null; at: string; run_id: number | null }
 interface PostingDetail extends PostingSummary { raw_text: string | null; via: string | null;
@@ -63,8 +65,11 @@ interface AppStats { by_channel: StatsRow[]; by_cv: StatsRow[]; by_stage: Record
 interface RunSummary { id: number; started_at: string; finished_at: string | null;
   status: "running" | "ok" | "partial" | "failed"; stats: Record<string, unknown> | null }
 interface Today { weekly_goal: number; applications_this_week: number;
-  new_since_yesterday: PostingSummary[]; closed_since_yesterday: PostingSummary[];
-  upcoming_deadlines: PostingSummary[]; followups_due: Application[];
+  new_since_yesterday: PostingSummary[];  // internship track only
+  new_post_graduation: number;            // new postings on the post_graduation track (count)
+  closed_since_yesterday: PostingSummary[];
+  upcoming_deadlines: PostingSummary[];   // internship track only
+  followups_due: Application[];
   pending_approvals: number; last_run: RunSummary | null }
 interface Company { id: number; name: string; sector: string | null; city: string | null;
   careers_url: string | null; program: string | null; why: string | null; notes: string | null;
@@ -79,11 +84,11 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 |---|---|---|---|
 | GET | /api/health | | `{status:"ok"}` |
 | GET | /api/today | | Today |
-| GET | /api/postings | query: `priority, zone, type, status, source, user_status, q, sort (priority\|deadline\|company\|first_seen), include_rejected (bool, default false), only_rejected (bool)` | PostingSummary[] |
+| GET | /api/postings | query: `priority, zone, type, status, source, user_status, q, sort (priority\|deadline\|company\|first_seen), include_rejected (bool, default false), only_rejected (bool), track (internship\|post_graduation\|all, default internship)` | PostingSummary[] |
 | GET | /api/postings/{id} | | PostingDetail |
 | POST | /api/postings | `{url}` manual add | PostingDetail |
 | PATCH | /api/postings/{id} | `{user_status?, status?, note?}` | PostingDetail |
-| POST | /api/postings/{id}/override | (marks all reject hits overridden, filter_state=overridden) | PostingDetail |
+| POST | /api/postings/{id}/override | (marks all reject hits and the `post_graduation` flag overridden, filter_state=overridden; the posting moves to the internship track) | PostingDetail |
 | POST | /api/postings/{id}/mark-sent | `{channel, cv_version, date_sent?}` | Application |
 | GET | /api/postings/{id}/pack | | Pack (404 if none) |
 | POST | /api/postings/{id}/pack | generate now (LLM) | Pack |
@@ -108,6 +113,16 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 Rules: no route ever submits an application or sends a message. `followup_due` = stage
 `Inviata`, not responded, `date_sent` 14+ days ago. "Since yesterday" = change events in the
 latest run (fallback: last 24 hours).
+
+Tracks: the filter rule `post_graduation` (action `flag`) marks graduate programmes and
+full-time roles that start after the July 2027 graduation (or are for people who already
+graduated). It is not an exclusion: `filter_state` stays `flagged` (or `rejected` if another
+reject rule fires). `PostingSummary.track` is `post_graduation` when the posting has a
+`post_graduation` hit with `overridden: false`, else `internship`. `GET /api/postings` returns
+the internship track by default; `track=post_graduation` gives the separate view and
+`track=all` both (the `include_rejected` / `only_rejected` switches apply on top). In Today,
+`new_since_yesterday` and `upcoming_deadlines` are internship-only and `new_post_graduation`
+counts the new post-graduation postings.
 
 Notes: list filters (`priority, zone, type, status, source, user_status` on postings; `status` on
 drafts) also accept comma-separated values; `priority=none` matches unscored postings and

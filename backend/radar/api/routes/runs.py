@@ -9,6 +9,7 @@ from sqlmodel import col, select
 
 from radar.api import schemas
 from radar.api.deps import SessionDep
+from radar.api.routes.common import get_or_404
 from radar.models import Run
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -33,3 +34,10 @@ def list_runs(
         select(Run).order_by(col(Run.started_at).desc(), col(Run.id).desc()).limit(limit)
     ).all()
     return [run_out(r) for r in runs]
+
+
+@router.get("/{run_id}", response_model=schemas.RunDetail)
+def get_run(run_id: int, session: SessionDep) -> schemas.RunDetail:
+    """One run with its Markdown report (private: may contain titles and company names)."""
+    run = get_or_404(session, Run, run_id, "Run")
+    return schemas.RunDetail(**run_out(run).model_dump(), report_md=run.report_md)
