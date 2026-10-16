@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, inspect, text
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -35,7 +35,47 @@ def get_engine(url: str | None = None) -> Engine:
 def init_db(engine: Engine | None = None) -> Engine:
     engine = engine or get_engine()
     SQLModel.metadata.create_all(engine)
+    add_missing_columns(engine)
     return engine
+
+
+def add_missing_columns(engine: Engine) -> list[str]:
+    """Additive migration: create columns that exist in the models but not in the database.
+
+    ``create_all`` never alters existing tables, so new nullable/defaulted model fields are
+    added here with ``ALTER TABLE ... ADD COLUMN``. Columns are never dropped or changed.
+    """
+    added: list[str] = []
+    insp = inspect(engine)
+    existing_tables = set(insp.get_table_names())
+    for table in SQLModel.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in have:
+                continue
+            ddl_type = column.type.compile(dialect=engine.dialect)
+            default = ""
+            arg = getattr(column.default, "arg", None)
+            if isinstance(arg, bool):
+                default = (
+                    f" DEFAULT {'1' if arg else '0'}"
+                    if engine.dialect.name == "sqlite"
+                    else f" DEFAULT {str(arg).upper()}"
+                )
+            elif isinstance(arg, int | float):
+                default = f" DEFAULT {arg}"
+            elif isinstance(arg, str):
+                default = " DEFAULT '" + arg.replace("'", "''") + "'"
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl_type}{default}'
+                    )
+                )
+            added.append(f"{table.name}.{column.name}")
+    return added
 
 
 @contextmanager
