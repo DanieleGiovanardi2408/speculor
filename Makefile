@@ -20,7 +20,7 @@ define serve_both
 endef
 
 .PHONY: help install dev dev-real seed test lint fmt run-pipeline report send send-dry build \
-	bootstrap-data pull-data push-data clean
+	schedule-install schedule-remove schedule-status schedule-run-now clean
 
 help: ## List available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -78,14 +78,17 @@ send-dry: ## Same as send, but linkedin-cli runs with --dry-run and nothing chan
 build: ## Build the frontend for production (frontend/dist)
 	$(PNPM) -C frontend build
 
-bootstrap-data: ## One-off: push config + data/radar.db to the orphan `data` branch (for CI)
-	./scripts/bootstrap_data.sh
+schedule-install: ## Run the pipeline every day at 07:00 with launchd (runs on wake if asleep)
+	./scripts/schedule.sh install
 
-pull-data: ## Download the DB + reports written by the daily workflow (backs up the local DB)
-	./scripts/pull_data.sh
+schedule-remove: ## Remove the daily launchd job
+	./scripts/schedule.sh remove
 
-push-data: ## Upload your local DB (approvals, notes) to the `data` branch for the next daily run
-	./scripts/push_data.sh
+schedule-status: ## Show whether the daily job is installed and the last log lines
+	./scripts/schedule.sh status
+
+schedule-run-now: ## Trigger the daily job immediately (output in logs/daily.log)
+	./scripts/schedule.sh run-now
 
 clean: ## Remove caches, build output and the demo DB (keeps data/radar.db)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov frontend/dist data/demo.db
