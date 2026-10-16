@@ -181,7 +181,7 @@ def db_secure() -> None:
 
 @config_app.command("push")
 def config_push() -> None:
-    """Copy config/{profile,companies,rules}.yaml into the settings table (for CI)."""
+    """Copy config/{profile,companies,rules}.yaml into the settings table."""
     import yaml
 
     from radar.db import session_scope, set_setting

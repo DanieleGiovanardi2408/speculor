@@ -72,7 +72,7 @@ def _quote(value: str) -> str:
 
 
 def _mailbox(folder: str) -> str:
-    folder = folder.strip() or "INBOX"
+    folder = folder.strip() or "radar"
     if folder.startswith('"') or not any(c in folder for c in ' "\\(){%*'):
         return folder
     return _quote(folder)
@@ -161,7 +161,7 @@ class EmailAlertsConnector:
         password: str,
         *,
         port: int = 993,
-        folder: str = "INBOX",
+        folder: str = "radar",
         since_days: int = 14,
         extra_senders: Sequence[str] = (),
         max_messages: int = DEFAULT_MAX_MESSAGES,

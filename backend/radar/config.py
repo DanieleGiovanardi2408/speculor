@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     imap_port: int = Field(default=993, validation_alias="RADAR_IMAP_PORT")
     imap_user: str | None = Field(default=None, validation_alias="RADAR_IMAP_USER")
     imap_password: SecretStr | None = Field(default=None, validation_alias="RADAR_IMAP_PASSWORD")
-    imap_folder: str = Field(default="INBOX", validation_alias="RADAR_IMAP_FOLDER")
+    imap_folder: str = Field(default="radar", validation_alias="RADAR_IMAP_FOLDER")
     imap_since_days: int = Field(default=14, validation_alias="RADAR_IMAP_SINCE_DAYS")
 
     # Local sending

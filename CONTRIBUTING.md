@@ -17,11 +17,12 @@ make dev       # demo mode: fictional data, fake LLM, no API keys
 | Target | What it does |
 |---|---|
 | `make dev` | Demo DB + fake LLM, API on :8000 and web app on :5173 |
-| `make dev-real` | Same on your real `data/radar.db` |
+| `make dev-real` | Same on your real `data/radar.db` (local only) |
 | `make test` | pytest + frontend tests |
 | `make lint` | ruff check, ruff format --check, mypy (strict), eslint, tsc |
 | `make fmt` | ruff format + autofix |
 | `make run-pipeline` | Run the daily pipeline locally |
+| `make schedule-install` / `make schedule-status` / `make schedule-run-now` / `make schedule-remove` | Manage the local launchd daily run (07:00) |
 | `make send` / `make send-dry` | Send approved LinkedIn drafts, locally, one by one |
 | `make build` | Production build of the frontend |
 
@@ -47,5 +48,7 @@ Run `make help` for the full list.
   string listed in your local, gitignored `private/forbidden_strings.txt`), plus ruff and basic
   hygiene checks. Do not bypass them with `--no-verify` on `main`.
 - Never add code that sends messages or submits applications automatically, runs LinkedIn
-  actions in CI, stores LinkedIn cookies outside the user's machine, or evades anti-bot
-  measures (CAPTCHAs, fingerprinting, proxies rotation).
+  actions in CI, stores LinkedIn cookies outside the user's machine, ignores robots.txt, or
+  evades anti-bot measures (CAPTCHAs, fingerprinting, proxies rotation).
+- CI runs with no secrets and no real data; never add a workflow that runs the pipeline or
+  touches personal data on GitHub. The daily run stays local (launchd).
