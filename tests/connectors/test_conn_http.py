@@ -215,3 +215,18 @@ def test_parse_dates() -> None:
     assert parse_datetime("garbage") is None
     d = parse_date("2026-11-30T23:59:59+01:00")
     assert d is not None and d.isoformat() == "2026-11-30"
+
+
+def test_robots_wildcards_are_enforced(client: PoliteClient, mock: respx.MockRouter) -> None:
+    # The stdlib parser ignores "*" inside paths; PoliteClient also applies wildcard rules.
+    mock.get("https://wild.example/robots.txt").mock(
+        return_value=httpx.Response(
+            200,
+            text="User-agent: *\nAllow: /it$\nAllow: /*/job-offers/\nDisallow: /*LAC*\n"
+            "Disallow: /*\n",
+        )
+    )
+    assert client.robots_allowed("https://wild.example/it") is True
+    assert client.robots_allowed("https://wild.example/it/job-offers/123") is True
+    assert client.robots_allowed("https://wild.example/annunci.php?LAC=1") is False
+    assert client.robots_allowed("https://wild.example/it/job-offers") is False

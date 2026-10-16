@@ -33,6 +33,7 @@ import httpx
 from selectolax.lexbor import LexborHTMLParser
 
 from radar.connectors.base import SourceError
+from radar.connectors.robots import RobotsRules
 
 log = logging.getLogger(__name__)
 # httpx logs every request URL at INFO; URLs carry board slugs (company names), which would
@@ -128,6 +129,7 @@ class PoliteClient:
         self._sleep = sleep
         self._last_request: dict[str, float] = {}
         self._robots: dict[str, urllib.robotparser.RobotFileParser] = {}
+        self._robots_rules: dict[str, RobotsRules] = {}
         self.network_requests = 0  # counter, handy for tests and run stats
         self._client = httpx.Client(
             headers={"User-Agent": user_agent, "Accept-Language": "en,it;q=0.8"},
@@ -226,16 +228,19 @@ class PoliteClient:
             try:
                 res = self.fetch(robots_url, ok_statuses=frozenset(range(200, 600)))
             except SourceError:
-                parser.parse(_DISALLOW_ALL)
+                lines = list(_DISALLOW_ALL)
             else:
                 if res.status in (401, 403) or res.status >= 500:
-                    parser.parse(_DISALLOW_ALL)
+                    lines = list(_DISALLOW_ALL)
                 elif res.status >= 400:
-                    parser.parse([])  # no robots.txt: everything allowed
+                    lines = []  # no robots.txt: everything allowed
                 else:
-                    parser.parse(res.text.splitlines())
+                    lines = res.text.splitlines()
+            parser.parse(lines)
             self._robots[host] = parser
-        return parser.can_fetch(self._robots_agent(), url)
+            self._robots_rules[host] = RobotsRules.parse("\n".join(lines), self._robots_agent())
+        # Both must allow: the stdlib parser (agent groups) and the wildcard-aware matcher.
+        return parser.can_fetch(self._robots_agent(), url) and self._robots_rules[host].allowed(url)
 
     # ------------------------------------------------------------------ internals
     def _robots_agent(self) -> str:
