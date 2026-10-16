@@ -538,8 +538,12 @@ Return ONLY a JSON object:
 Rules:
 - A claim is a sentence (or clause) that states something about the candidate: experience,
   projects, results, numbers, tools, skills, languages, education, availability, citizenship,
-  plans. List EVERY claim in every text. Skip greetings, sign-offs, questions to the reader and
-  sentences only about the company or the posting.
+  plans. List EVERY claim in every text. Skip greetings, sign-offs, questions to the reader,
+  statements of interest or motivation ("I am interested in ...", "I would welcome a
+  conversation"), and sentences only about the company, the role or the posting: those are
+  checked against the POSTING section, not the facts, and are not claims about the candidate.
+- A sentence that mixes both is a claim only for its candidate part (e.g. "the rotations match
+  my plan to work abroad" -> claim "plan to work abroad").
 - text_id: the id after "###" of the text the claim comes from. claim: copied verbatim.
 - supported: one listed fact in CANDIDATE FACTS backs the claim fully, with the same scope;
   fact_id is that fact's id (the text in brackets).
@@ -554,9 +558,16 @@ def verify_system() -> str:
     return VERIFY_SYSTEM
 
 
-def verify_user(facts_text: str, texts: Sequence[tuple[str, str]]) -> str:
+VERIFY_POSTING_CHARS = 3000
+
+
+def verify_user(facts_text: str, texts: Sequence[tuple[str, str]], posting_text: str = "") -> str:
     blocks = "\n\n".join(f"### {tid}\n{text.strip()}" for tid, text in texts)
-    return f"{facts_text}\n\n{TEXTS_HEADER}\n{blocks}"
+    posting = ""
+    if posting_text.strip():
+        excerpt = posting_text.strip()[:VERIFY_POSTING_CHARS]
+        posting = f"\n\nPOSTING (context only, not candidate facts):\n{excerpt}"
+    return f"{facts_text}{posting}\n\n{TEXTS_HEADER}\n{blocks}"
 
 
 # --------------------------------------------------------------------------- fake generator

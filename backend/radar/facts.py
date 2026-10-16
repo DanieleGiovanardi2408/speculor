@@ -59,9 +59,10 @@ GRADE_PATTERNS = (
 )
 NATIVE_ENGLISH_PATTERNS = (
     r"\bnative(?:[- ]level)?\s+(?:english|speaker of english)\b",
-    r"\benglish[^.\n]{0,25}\bnative\b",
+    # "fluent in English and native Italian" is fine: "native" must not qualify another language
+    r"\benglish[^.\n]{0,25}\bnative\b(?!\s+(?:italian|italiano|speaker of italian))",
     r"\bmadrelingua inglese\b",
-    r"\binglese[^.\n]{0,25}\bmadrelingua\b",
+    r"\binglese[^.\n]{0,25}\bmadrelingua\b(?!\s+italian[oa])",
     r"\bbilingual\b",
     r"\bbilingue\b",
 )

@@ -265,3 +265,22 @@ def test_verification_disabled_by_setting(
     assert stats["verify_requests"] == 0
     pack = session.exec(select(ApplicationPack)).one()
     assert pack.verification is not None and pack.verification["status"] == "precheck_only"
+
+
+def test_native_italian_next_to_english_is_not_flagged() -> None:
+    import re
+
+    from radar.facts import NATIVE_ENGLISH_PATTERNS
+
+    ok = "I am fluent in English and native Italian."
+    bad = "I speak English at a native level."
+    assert not any(re.search(p, ok, re.I) for p in NATIVE_ENGLISH_PATTERNS)
+    assert any(re.search(p, bad, re.I) for p in NATIVE_ENGLISH_PATTERNS)
+
+
+def test_verifier_prompt_carries_posting_context() -> None:
+    from radar.llm import prompts
+
+    user = prompts.verify_user("FACTS", [("cover_letter", "Hi")], "Rotations in Zurich")
+    assert "POSTING (context only" in user and "Rotations in Zurich" in user
+    assert "POSTING" not in prompts.verify_user("FACTS", [("cover_letter", "Hi")])

@@ -305,7 +305,7 @@ def verify_texts(
     elif texts:
         budget = _facts_budget(provider)
         facts = select_facts(bank, "\n".join(t for _, t in texts), budget or 10**9)
-        user = prompts.verify_user(prompts.facts_block(bank, facts), texts)
+        user = prompts.verify_user(prompts.facts_block(bank, facts), texts, posting_text)
         used_provider, used_model = provider.name, provider.model
         try:
             r = provider.complete(
