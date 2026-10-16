@@ -1,0 +1,72 @@
+{
+ "total": 6,
+ "jobPostings": [
+  {
+   "title": "Junior Agentic Developer",
+   "externalPath": "/job/Roma--Via-Esempio/Junior-Agentic-Developer_JR105272",
+   "locationsText": "4 Locations",
+   "postedOn": "Posted 14 Days Ago",
+   "bulletFields": [
+    "JR105272"
+   ]
+  },
+  {
+   "title": "Junior Agentic Developer",
+   "externalPath": "/job/Roma--Via-Esempio/Junior-Agentic-Developer_JR105319",
+   "locationsText": "9 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "JR105319"
+   ]
+  },
+  {
+   "title": "Mulesoft Developer Junior",
+   "externalPath": "/job/Milano-Nord/Mulesoft-Developer-Junior_JR105349",
+   "locationsText": "4 Locations",
+   "postedOn": "Posted 25 Days Ago",
+   "bulletFields": [
+    "JR105349"
+   ]
+  },
+  {
+   "title": "Salesforce Developer Junior",
+   "externalPath": "/job/Milano-Nord/Salesforce-Developer-Junior_JR105351",
+   "locationsText": "4 Locations",
+   "postedOn": "Posted 25 Days Ago",
+   "bulletFields": [
+    "JR105351"
+   ]
+  },
+  {
+   "title": "Analista de Suporte Júnior",
+   "externalPath": "/job/Belo-Horizonte-Centro/Analista-de-Suporte-Jnior_JR105297",
+   "locationsText": "Belo Horizonte (Centro)",
+   "postedOn": "Posted Yesterday",
+   "bulletFields": [
+    "JR105297"
+   ]
+  },
+  {
+   "title": "ServiceNow Technical Manager",
+   "externalPath": "/job/Milano-Centro/ServiceNow-Solutions-Lead_JR105188",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "JR105188"
+   ]
+  }
+ ],
+ "facets": [
+  {
+   "facetParameter": "timeType",
+   "values": [
+    {
+     "descriptor": "Full time",
+     "id": "592f3fc8c09c10272ae71116b95d0002",
+     "count": 6
+    }
+   ]
+  }
+ ],
+ "userAuthenticated": false
+}

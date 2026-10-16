@@ -15,6 +15,7 @@ companies:
   #   lever           jobs(.eu).lever.co/<slug>/<uuid>                  -> slug (+ region: eu for .eu)
   #   ashby           jobs.ashbyhq.com/<slug>/<uuid>                    -> slug
   #   smartrecruiters jobs.smartrecruiters.com/<CompanyId>/<id>-title   -> CompanyId (case matters)
+  #   workday         <tenant>.<wdN>.myworkdayjobs.com/[en-US/]<site>   -> "<tenant>|<wdN>|<site>"
   # region: "eu" for EU-hosted boards (Lever: switches to api.eu.lever.co; Greenhouse: informational)
   # active: false skips the entry; seed: true means it came from the seed export
   - name: Nebula Analytics
@@ -42,6 +43,17 @@ companies:
     region: null
     active: true
     seed: false
+  - name: Gruppo Meridiana
+    ats: workday
+    slug: "meridiana|wd3|Meridiana_Careers"   # or tenant: meridiana, host: wd3, site: Meridiana_Careers
+    region: null
+    active: true
+    seed: false
+    # optional, Workday only:
+    search_terms: [intern, internship, graduate, stage, tirocinio, junior]  # default list
+    countries: europe          # or [Italy, Netherlands]: scope via the board's country facet
+    # applied_facets: {locations: [<facet id>, ...]}   # raw facets, for city-only tenants
+    max_details: 40            # description requests per run
   - name: Banca Esempio
     ats: none                  # no supported public ATS: tracked manually / via LinkedIn
     slug: null

@@ -14,7 +14,15 @@ from radar.db import get_setting, set_setting
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 DEFAULT_WEEKLY_GOAL = 10
-DEFAULT_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters", "linkedin")
+DEFAULT_SOURCES = (
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "workday",
+    "linkedin",
+    "email",
+)
 
 
 def weekly_goal(session: Session) -> int:

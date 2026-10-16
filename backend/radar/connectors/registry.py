@@ -5,28 +5,37 @@ Structure (see ``config/companies.example.yaml``)::
     title_filter: [intern, graduate, ...]   # optional, applied to ATS titles
     companies:
       - {name: Acme, ats: greenhouse, slug: acme, region: null, active: true, seed: false}
+      - {name: Acme Corp, ats: workday, slug: "acme|wd3|Acme_Careers"}  # tenant|wdN|site
     linkedin:
       enabled: true          # optional, default true
       max_details: 5         # optional
       queries:
         - {keywords: "AI engineer intern", location: "Italy"}
+    email:                   # optional; the "email" source needs RADAR_IMAP_* env vars
+      enabled: true          # optional, default true
+      extra_senders: [alerts@jobs.example.com, "@example.org"]  # generic alert senders
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from radar.connectors.ashby import AshbyConnector
 from radar.connectors.base import Connector
+from radar.connectors.email_alerts import EmailAlertsConnector
 from radar.connectors.greenhouse import GreenhouseConnector
 from radar.connectors.http import PoliteClient
 from radar.connectors.lever import LeverConnector
 from radar.connectors.linkedin_guest import LinkedInGuestConnector
 from radar.connectors.smartrecruiters import SmartRecruitersConnector
+from radar.connectors.workday import WorkdayConnector, board_from_entry
 
-ATS_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters")
-ALL_SOURCES = (*ATS_SOURCES, "linkedin")
+if TYPE_CHECKING:
+    from radar.config import Settings
+
+ATS_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email")
 
 
 def _title_filter(value: Any) -> list[str] | None:
@@ -38,9 +47,13 @@ def _title_filter(value: Any) -> list[str] | None:
 
 
 def build_connectors(
-    client: PoliteClient, companies_cfg: dict[str, Any], sources: list[str] | None = None
+    client: PoliteClient,
+    companies_cfg: dict[str, Any],
+    sources: list[str] | None = None,
+    settings: Settings | None = None,
 ) -> list[Connector]:
-    """One connector per active company with a supported ATS, plus one LinkedIn connector."""
+    """One connector per active company with a supported ATS, plus one LinkedIn connector,
+    plus the email-alerts connector when the RADAR_IMAP_* settings are set."""
     wanted = set(sources) if sources else set(ALL_SOURCES)
     global_filter = _title_filter(companies_cfg.get("title_filter"))
     counters: Counter[str] = Counter()
@@ -50,6 +63,11 @@ def build_connectors(
             continue
         ats = str(entry.get("ats") or "none").lower()
         slug = entry.get("slug")
+        board = board_from_entry(entry) if ats == "workday" else None
+        if board is not None:
+            slug = board.slug
+        elif ats == "workday":
+            slug = None  # malformed workday entry: skipped
         if ats not in ATS_SOURCES or ats not in wanted or not slug:
             continue
         name = str(entry.get("name") or slug)
@@ -66,6 +84,21 @@ def build_connectors(
             )
         elif ats == "ashby":
             conn = AshbyConnector(client, name, str(slug), title_filter=tf, label=label)
+        elif ats == "workday" and board is not None:
+            terms = entry.get("search_terms")
+            facets = entry.get("applied_facets")
+            countries = entry.get("countries")
+            conn = WorkdayConnector(
+                client,
+                name,
+                board,
+                title_filter=tf,
+                search_terms=[str(t) for t in terms] if isinstance(terms, list) else None,
+                applied_facets=facets if isinstance(facets, dict) else None,
+                countries=countries if isinstance(countries, str | list) else None,
+                max_details=int(entry.get("max_details", 40)),
+                label=label,
+            )
         else:
             conn = SmartRecruitersConnector(client, name, str(slug), title_filter=tf, label=label)
         out.append(conn)
@@ -81,4 +114,18 @@ def build_connectors(
             out.append(
                 LinkedInGuestConnector(client, queries, max_details=int(li.get("max_details", 5)))
             )
+
+    em = companies_cfg.get("email") or {}
+    if "email" in wanted and isinstance(em, dict) and em.get("enabled", True):
+        if settings is None:
+            from radar.config import get_settings
+
+            settings = get_settings()
+        senders = em.get("extra_senders") or []
+        email_conn = EmailAlertsConnector.from_settings(
+            settings,
+            extra_senders=[str(s) for s in senders] if isinstance(senders, list) else [],
+        )
+        if email_conn is not None:
+            out.append(email_conn)
     return out

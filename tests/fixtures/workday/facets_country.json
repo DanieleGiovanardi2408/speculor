@@ -1,0 +1,75 @@
+{
+ "total": 1122,
+ "jobPostings": [
+  {
+   "title": "Reinsurance Operations Specialist",
+   "externalPath": "/job/Tianjin---International/Reinsurance-Operations-Specialist_R_363053-1",
+   "locationsText": "Tianjin - International",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "R_363053"
+   ]
+  },
+  {
+   "title": "Project Manager / Business Analyst (AVP level)",
+   "externalPath": "/job/Tianjin---International/Project-Manager---Business-Analyst--AVP-level-_R_363782-1",
+   "locationsText": "Tianjin - International",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "R_363782"
+   ]
+  },
+  {
+   "title": "Project Manager / Business Analyst (AVP level)",
+   "externalPath": "/job/Tianjin---International/Project-Manager---Business-Analyst--AVP-level-_R_361169",
+   "locationsText": "Tianjin - International",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "R_361169"
+   ]
+  }
+ ],
+ "facets": [
+  {
+   "facetParameter": "Location_Country",
+   "values": [
+    {
+     "descriptor": "United States of America",
+     "id": "bc33aa3152ec42d4995f4791a106ed09",
+     "count": 366
+    },
+    {
+     "descriptor": "Spain",
+     "id": "bd34c524a6a04ae6915f5d96fa086199",
+     "count": 23
+    },
+    {
+     "descriptor": "Netherlands",
+     "id": "9696868b09c64d52a62ee13b052383cc",
+     "count": 22
+    },
+    {
+     "descriptor": "Italy",
+     "id": "8cd04a563fd94da7b06857a79faaf815",
+     "count": 22
+    }
+   ]
+  },
+  {
+   "facetParameter": "timeType",
+   "values": [
+    {
+     "descriptor": "Full time",
+     "id": "17dd51a0366901dfa65f284087353e00",
+     "count": 1107
+    },
+    {
+     "descriptor": "Part time",
+     "id": "17dd51a0366901a4b53d284087353d00",
+     "count": 15
+    }
+   ]
+  }
+ ],
+ "userAuthenticated": false
+}

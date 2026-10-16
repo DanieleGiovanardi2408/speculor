@@ -1,0 +1,43 @@
+{
+ "jobPostingInfo": {
+  "id": "ec3ac113471510019be50c1e370e0000",
+  "title": "HR Talent Acquisition Intern",
+  "jobDescription": "<p>Civetta Tech è un'azienda immaginaria usata nei test di Radar.</p><p><strong>HR Talent Acquisition Intern</strong></p><ul><li>Supporterai il team nei progetti quotidiani</li><li>Preparerai brevi analisi e report</li></ul><ul><li>Laurea in discipline economiche o quantitative</li><li>Buona conoscenza dell'inglese</li></ul>",
+  "location": "Roma  (Via Esempio)",
+  "postedOn": "Posted 10 Days Ago",
+  "startDate": "2026-10-06",
+  "timeType": "Full time",
+  "jobReqId": "JR105286",
+  "jobPostingId": "HR-Talent-Acquisition-Intern_JR105286",
+  "jobPostingSiteId": "ExternalCareers",
+  "country": {
+   "descriptor": "Italy",
+   "id": "8cd04a563fd94da7b06857a79faaf815"
+  },
+  "logoImage": {
+   "src": "/wday/cxs/civetta/ExternalCareers/sidebarimage/6e1b3d5e5c3a10014c7599f89e0e0000",
+   "alt": "Logo"
+  },
+  "canApply": true,
+  "posted": true,
+  "includeResumeParsing": true,
+  "jobRequisitionLocation": {
+   "descriptor": "Roma  (Via Esempio)",
+   "country": {
+    "descriptor": "Italy",
+    "id": "8cd04a563fd94da7b06857a79faaf815",
+    "alpha2Code": "IT"
+   }
+  },
+  "externalUrl": "https://civetta.wd3.myworkdayjobs.com/ExternalCareers/job/Roma--Via-Esempio/HR-Talent-Acquisition-Intern_JR105286",
+  "timeLeftToApply": "4 days left to apply",
+  "endDate": "2026-10-21",
+  "jobPostingEndDateAsText": "End Date: October 21, 2026"
+ },
+ "hiringOrganization": {
+  "name": "Civetta Tech S.p.A.",
+  "url": ""
+ },
+ "similarJobs": [],
+ "userAuthenticated": false
+}

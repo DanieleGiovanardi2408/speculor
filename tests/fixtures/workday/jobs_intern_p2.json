@@ -1,0 +1,61 @@
+{
+ "total": 0,
+ "jobPostings": [
+  {
+   "title": "SOC Analyst L1",
+   "externalPath": "/job/Roma--Via-Esempio/SOC-Analyst-L1_JR105227",
+   "locationsText": "Roma  (Via Esempio)",
+   "postedOn": "Posted 17 Days Ago",
+   "bulletFields": [
+    "JR105227"
+   ]
+  },
+  {
+   "title": "Client Manager Consumer Packaged Goods",
+   "externalPath": "/job/Milano-Centro/Client-Manager-CPG_JR103386",
+   "locationsText": "6 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "JR103386"
+   ]
+  },
+  {
+   "title": "Client Manager Retail",
+   "externalPath": "/job/Milano-Centro/Client-Manager-Retail_JR105192",
+   "locationsText": "6 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "JR105192"
+   ]
+  },
+  {
+   "title": "ServiceNow Technical Manager",
+   "externalPath": "/job/Milano-Centro/ServiceNow-Solutions-Lead_JR105188",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": [
+    "JR105188"
+   ]
+  },
+  {
+   "title": "Software Developer - 3DExperience",
+   "externalPath": "/job/Napoli--Centro/Software-Developer---3DExperience_JR105371",
+   "locationsText": "6 Locations",
+   "postedOn": "Posted 22 Days Ago",
+   "bulletFields": [
+    "JR105371"
+   ]
+  },
+  {
+   "title": "MES Solution Architect",
+   "externalPath": "/job/Genova-Porto/Solutions-Architect-OP-Center_JR104169",
+   "locationsText": "2 Locations",
+   "postedOn": "Posted 11 Days Ago",
+   "bulletFields": [
+    "JR104169"
+   ]
+  }
+ ],
+ "facets": [],
+ "userAuthenticated": false
+}

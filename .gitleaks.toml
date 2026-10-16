@@ -1,0 +1,10 @@
+# Default gitleaks rules plus an allowlist for SYNTHETIC email fixtures (fake tracking tokens).
+# Anonymized real samples (tests/fixtures/email/real_*.eml) are deliberately NOT allowlisted.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "synthetic email fixtures"
+paths = [
+  '''tests/fixtures/email/(linkedin_alert|linkedin_alert_repeat|linkedin_alert_text_only|jobteaser_digest|generic_greenhouse|non_alert)\.eml''',
+]

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +49,15 @@ class Settings(BaseSettings):
         validation_alias="RADAR_USER_AGENT",
     )
     http_cache_ttl_hours: float = Field(default=12.0, validation_alias="RADAR_HTTP_CACHE_TTL_HOURS")
+
+    # Optional email-alert mailbox (read-only IMAP over SSL). Source "email" is enabled only
+    # when host, user and password are all set.
+    imap_host: str | None = Field(default=None, validation_alias="RADAR_IMAP_HOST")
+    imap_port: int = Field(default=993, validation_alias="RADAR_IMAP_PORT")
+    imap_user: str | None = Field(default=None, validation_alias="RADAR_IMAP_USER")
+    imap_password: SecretStr | None = Field(default=None, validation_alias="RADAR_IMAP_PASSWORD")
+    imap_folder: str = Field(default="INBOX", validation_alias="RADAR_IMAP_FOLDER")
+    imap_since_days: int = Field(default=14, validation_alias="RADAR_IMAP_SINCE_DAYS")
 
     # Local sending
     linkedin_bin: str = Field(default="linkedin", validation_alias="RADAR_LINKEDIN_BIN")

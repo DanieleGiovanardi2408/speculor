@@ -26,3 +26,13 @@ def mock() -> Iterator[respx.MockRouter]:
     # assert_all_mocked (default True): any unmocked request fails -> no live network in tests
     with respx.mock(assert_all_called=False) as router:
         yield router
+
+
+@pytest.fixture(autouse=True)
+def _no_real_imap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer's .env may configure IMAP; connector tests must not pick it up."""
+    from radar.config import get_settings
+
+    for name in ("RADAR_IMAP_HOST", "RADAR_IMAP_USER", "RADAR_IMAP_PASSWORD"):
+        monkeypatch.setenv(name, "")
+    get_settings.cache_clear()

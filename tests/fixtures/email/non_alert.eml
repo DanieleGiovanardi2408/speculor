@@ -1,0 +1,34 @@
+From: Jane Example via LinkedIn <invitations@linkedin.com>
+To: Test User <test.user@example.com>
+Subject: Test, please add me to your LinkedIn network
+Date: Wed, 14 Oct 2026 18:00:00 +0000
+Message-ID: <non_alert.eml@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============3952642738790784484=="
+
+--===============3952642738790784484==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Test, Jane Example wants to connect with you.
+
+--===============3952642738790784484==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><p>Hi Test, Jane Example wants to connect with you.</p>
+<p><a href=3D"https://www.linkedin.com/comm/in/jane-example-0000?trk=3Deml-in=
+vite">View profile</a></p>
+<p>Jobs you may be interested in: <a href=3D"https://www.linkedin.com/comm/jo=
+bs/view/4099999999/?trackingId=3DZm9vYmFyYmF6cXV4MTIzNA%3D%3D&amp;refId=3DYmF=
+6cXV4Zm9vYmFyNTY3OA%3D%3D&amp;lipi=3Durn%3Ali%3Apage%3Aemail_email_job_alert_=
+digest_01%3BAbCdEfGh&amp;midToken=3DAQExampleTokenOnly&amp;midSig=3D0ExampleS=
+ig&amp;trk=3Deml-email_job_alert_digest_01-job_card-0-jobcard_body&amp;trkEma=
+il=3Deml-email_job_alert_digest_01-job_card-0-jobcard_body-null-abc~def~ghi&a=
+mp;eid=3Dabc-def-ghi&amp;otpToken=3DMTAwOTE3ZXhhbXBsZQ">Senior Staff Engineer=
+</a> Example Corp &middot; Rome, Italy</p>
+</body></html>
+
+--===============3952642738790784484==--

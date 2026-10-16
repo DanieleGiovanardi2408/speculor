@@ -1,0 +1,44 @@
+From: Example Job Digest <alerts@jobs.example.com>
+To: Test User <test.user@example.com>
+Subject: Your weekly job picks
+Date: Thu, 15 Oct 2026 06:00:00 +0000
+Message-ID: <generic_greenhouse.eml@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============8091742308921832558=="
+
+--===============8091742308921832558==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Weekly picks for you
+
+Software Engineering Intern (Summer 2027)
+FictionalCo - Dublin, Ireland
+https://click.jobs.example.com/redirect?url=3Dhttps%3A%2F%2Fjob-boards.greenh=
+ouse.io%2Ffictionalco%2Fjobs%2F4123456001%3Fgh_src%3Dalert_email&sig=3DZXhhbX=
+BsZXNpZw
+
+--===============8091742308921832558==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body>
+<h2>Weekly picks for you</h2>
+<table>
+<tr><td><a href=3D"https://click.jobs.example.com/redirect?url=3Dhttps%3A%2F%=
+2Fjob-boards.greenhouse.io%2Ffictionalco%2Fjobs%2F4123456001%3Fgh_src%3Dalert=
+_email&amp;sig=3DZXhhbXBsZXNpZw">Software Engineering Intern (Summer 2027)</a=
+><br>FictionalCo &middot; Dublin, Ireland</td></tr>
+<tr><td><a href=3D"https://jobs.lever.co/example-labs/1b2c3d4e-5f60-4a7b-8c9d=
+-0e1f2a3b4c5d?lever-source=3Dalert_email&amp;utm_source=3Ddigest">Product Ana=
+lyst Intern</a><br>Example Labs &middot; Berlin, Germany</td></tr>
+</table>
+<p>Read our blog: <a href=3D"https://blog.example.com/how-to-apply?utm_source=
+=3Ddigest">How to apply</a></p>
+<p><a href=3D"https://jobs.example.com/unsubscribe?token=3Dabc123">Unsubscrib=
+e</a></p>
+</body></html>
+
+--===============8091742308921832558==--

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import urlsplit
 
-from radar.connectors import ashby, greenhouse, lever, smartrecruiters
+from radar.connectors import ashby, greenhouse, lever, smartrecruiters, workday
 from radar.connectors.http import PoliteClient
 from radar.connectors.linkedin_guest import DETAIL_URL, parse_detail, parse_job_id
 
@@ -53,6 +53,14 @@ def _check(client: PoliteClient, url: str) -> bool | None:
     sr = smartrecruiters.parse_posting_url(url)
     if sr:
         return smartrecruiters.fetch_single(client, sr[0], sr[1]) is not None
+
+    wd = workday.parse_posting_url(url)
+    if wd:
+        if not wd[1]:
+            return None  # board URL, not a posting
+        if not client.robots_allowed(f"{wd[0].api}{wd[1]}"):
+            return None  # robots.txt disallows the CXS path: we do not know
+        return workday.fetch_single(client, url) is not None
 
     return None
 

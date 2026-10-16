@@ -177,7 +177,7 @@ def upsert_raw(
         area=raw.department,
         start_info=start_info,
         deadline=raw.deadline,
-        via="LinkedIn" if raw.source == "linkedin" else "Sito aziendale",
+        via=_via(raw),
         raw_text=raw_text,
         content_hash=chash,
         dedupe_key=dedupe_key(raw.company, title, code),
@@ -237,3 +237,13 @@ def _dedupe(session: Session, posting: Posting, run_id: int | None, now: datetim
         session.flush()
         _event(session, best, "reopened", run_id, now)
     session.flush()
+
+
+def _via(raw: RawPosting) -> str:
+    """Default application channel shown in the UI."""
+    alert = raw.extra.get("via")
+    if raw.source == "linkedin" or alert == "linkedin_alert":
+        return "LinkedIn"
+    if alert == "jobteaser_alert":
+        return "Career Service Luiss"
+    return "Sito aziendale"
