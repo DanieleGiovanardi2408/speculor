@@ -6,7 +6,7 @@ import { daysUntil, formatDate, formatShortDate, relativeDays } from "../lib/for
 import { sourceLabel } from "../lib/labels";
 import { ruleLabel } from "../lib/plain";
 import { noteBody, skipReasonOf } from "../lib/skip";
-import { Badge, FilterStateBadge, PostingStatusBadge, PriorityBadge, UserStatusBadge } from "./Badge";
+import { Badge, FilterStateBadge, PostingStatusBadge, PriorityBadge, SimilarityBadge, UserStatusBadge } from "./Badge";
 import { ExternalLink } from "./ExternalLink";
 import { Icon } from "./Icon";
 import { EvidenceSnippet } from "./Highlight";
@@ -203,6 +203,7 @@ export function PostingRow({
             </span>
             <span className="mt-1.5 flex flex-wrap gap-1 empty:hidden">
               <FilterStateBadge state={p.filter_state} />
+              <SimilarityBadge value={p.similarity} />
               <UserStatusBadge status={p.user_status} reason={skipReason} />
               <PostingStatusBadge status={p.status} />
               {p.track === "post_graduation" && (
@@ -270,6 +271,12 @@ export function PostingRow({
                     <dt className="text-ink-muted">Fonte:</dt>
                     <dd>{sourceLabel(p.source)}</dd>
                   </div>
+                  {p.similarity != null && (
+                    <div className="flex gap-1">
+                      <dt className="text-ink-muted">Affinità con il profilo:</dt>
+                      <dd>{p.similarity.toFixed(2).replace(".", ",")}</dd>
+                    </div>
+                  )}
                   <div className="flex gap-1">
                     <dt className="text-ink-muted">Visto la prima volta:</dt>
                     <dd>{formatDate(p.first_seen)}</dd>

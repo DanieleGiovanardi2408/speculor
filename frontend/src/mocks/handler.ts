@@ -113,6 +113,8 @@ function listPostings(q: Record<string, unknown>): PostingSummary[] {
         return a.company_name.localeCompare(b.company_name, "it");
       case "first_seen":
         return b.first_seen.localeCompare(a.first_seen);
+      case "similarity":
+        return (b.similarity ?? -1) - (a.similarity ?? -1);
       default:
         return (a.priority ? PRIO_RANK[a.priority] : 9) - (b.priority ? PRIO_RANK[b.priority] : 9);
     }

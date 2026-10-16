@@ -117,3 +117,22 @@ export function DraftStatusBadge({ status }: { status: DraftStatus }) {
     </Badge>
   );
 }
+
+/** Local embedding similarity to the profile (0..1): a compact bar plus the value. */
+export function SimilarityBadge({ value }: { value: number | null | undefined }) {
+  if (value == null) return null;
+  const v = Math.min(1, Math.max(0, value));
+  const label = v.toFixed(2).replace(".", ",");
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-line px-1.5 py-0.5 text-xs font-medium leading-4 text-ink-muted"
+      title="Affinità locale con il tuo profilo (embedding), calcolata prima della valutazione LLM"
+    >
+      <span aria-hidden="true" className="h-1.5 w-8 overflow-hidden rounded-full bg-subtle">
+        <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.round(v * 100)}%` }} />
+      </span>
+      <span aria-hidden="true">Affinità {label}</span>
+      <span className="sr-only">Affinità con il profilo: {Math.round(v * 100)} su 100</span>
+    </span>
+  );
+}
