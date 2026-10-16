@@ -3,7 +3,12 @@
 Prompt layout (stable, also parsed by ``fake_completion``):
 
     [radar-task: <task>]          first line of every system prompt
-    CANDIDATE ... / POSTING ...   sections of the user prompt, ``Key: value`` lines
+    CANDIDATE / POSTING ...       sections of the user prompt, ``Key: value`` lines
+    CANDIDATE FACTS               drafting prompts: ``[fact id] text`` lines (radar.facts), then
+                                  PROHIBITED; the verifier adds TEXTS with ``### <text id>``
+
+Scoring still uses the free-text profile (config/profile.yaml, ``condense_profile``); every draft
+uses only the fact bank.
 """
 
 from __future__ import annotations
@@ -13,6 +18,8 @@ import re
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from radar.facts import Fact, FactBank, empty_bank
+from radar.facts import render as render_facts
 from radar.llm.style import AVAILABILITY_SENTENCE
 from radar.models import Company, Contact, Posting
 from radar.timeutil import today
@@ -20,11 +27,11 @@ from radar.timeutil import today
 TASK_SCORE = "score"
 TASK_PACK = "pack"
 TASK_CONTACT = "contact-draft"
+TASK_VERIFY = "verify"
 
 SCORING_PROFILE_CHARS = 2000  # ~500 tokens
-DRAFT_PROFILE_CHARS = 5000
 SCORING_POSTING_CHARS = 6000
-DRAFT_POSTING_CHARS = 10000
+DRAFT_POSTING_CHARS = 7000
 CONTACT_POSTING_CHARS = 4000
 
 LANGUAGE_NAMES = {"it": "Italian", "en": "English"}
@@ -79,36 +86,6 @@ def condense_profile(profile: dict[str, Any], max_chars: int = SCORING_PROFILE_C
         f"Skills:\n{_skills(profile)}",
         "Projects:\n" + "\n".join(f"- {p}" for p in projects[:6]),
     ]
-    return "\n".join(lines)[:max_chars]
-
-
-def full_profile(profile: dict[str, Any], max_chars: int = DRAFT_PROFILE_CHARS) -> str:
-    """Richer profile for drafting: experience facts and project descriptions."""
-    lines = [
-        f"Name: {_s(profile.get('name'))}",
-        f"Headline: {_s(profile.get('headline'))}",
-        f"Citizenship: {_s(profile.get('citizenship'))}",
-        f"Based in: {_s(profile.get('based_in'))}",
-        f"Availability: {_s(profile.get('availability'))}",
-        f"Graduation: {_s(profile.get('graduation'))}",
-        f"Languages: {_languages(profile)}",
-        f"Target roles: {_join((_s(r) for r in profile.get('target_roles') or []), ', ')}",
-        "Education:",
-        *(f"- {_s(e)}" for e in profile.get("education") or []),
-        "Experience:",
-    ]
-    for e in profile.get("experience") or []:
-        if not isinstance(e, dict):
-            continue
-        lines.append(f"- {_s(e.get('role'))} at {_s(e.get('org'))} ({_s(e.get('period'))})")
-        lines.extend(f"  - {_s(f)}" for f in e.get("facts") or [])
-    lines.append("Projects:")
-    for p in profile.get("projects") or []:
-        if isinstance(p, dict):
-            lines.append(f"- {_s(p.get('name'))}: {_s(p.get('what'))}")
-    lines.append(f"Skills:\n{_skills(profile)}")
-    if profile.get("other"):
-        lines.append(f"Other: {_s(profile.get('other'))}")
     return "\n".join(lines)[:max_chars]
 
 
@@ -378,11 +355,63 @@ def repair_suffix(previous: str, error: str) -> str:
     )
 
 
+# --------------------------------------------------------------------------- facts
+
+FACTS_HEADER = "CANDIDATE FACTS"
+PROHIBITED_HEADER = "PROHIBITED"
+TEXTS_HEADER = "TEXTS"
+_FACT_LINE = re.compile(r"^\[([A-Za-z0-9_.-]+)\] (.*)$")
+
+
+def facts_block(bank: FactBank, facts: Sequence[Fact] | None = None) -> str:
+    """The fact list as ``[id] text`` lines, then prohibitions and the user's own rules."""
+    lines = [
+        f"{FACTS_HEADER} (the only source of facts about the candidate)",
+        render_facts(bank.facts if facts is None else facts) or "(none)",
+    ]
+    if bank.prohibitions:
+        lines += ["", f"{PROHIBITED_HEADER} (never claim, never mention)"]
+        lines += [f"[{p.id}] {p.text}" for p in bank.prohibitions]
+    if bank.rules:
+        lines += ["", "CANDIDATE'S OWN RULES"]
+        lines += [f"- {r}" for r in bank.rules]
+    return "\n".join(lines)
+
+
+def _english_rule(bank: FactBank) -> str:
+    level = bank.english_level or "C1"
+    if "native" in level.lower():
+        return ""
+    return (
+        f'- English level is {level}: write "fluent English" (or "{level}"), never "native" '
+        '("madrelingua") or "bilingual".\n'
+    )
+
+
+def fact_rules(bank: FactBank) -> str:
+    return f"""Fact discipline (most important rule):
+- CANDIDATE FACTS is the ONLY source of facts about the candidate. Every factual claim about the
+  candidate (experience, projects, results, numbers, tools, skills, languages, education,
+  availability, citizenship, plans) must come from one listed fact, with the same scope. Do not
+  upgrade or generalise: scraping is not NLP, a listed skill is not a project, "helped run" is
+  not "led", "two pilot gyms" stays two pilot gyms.
+- Anything about the candidate that no listed fact states must be written as a visible marker
+  [CHECK: what to verify], never as a plain sentence.
+- Never claim or mention anything listed in PROHIBITED.
+- Numbers: use only numbers that appear in CANDIDATE FACTS, exactly as written there (same
+  rounding, same unit). Never compute, round, combine or invent a number.
+{_english_rule(bank)}- Facts about the company come only from POSTING."""
+
+
+_CLAIMS_RULE = """claims: one item per factual claim about the candidate in any text, with the ids
+of the facts that support it, e.g. {"claim": "I built scrapers in Python", "fact_ids":
+["experience.acme.did.0"]}. A [CHECK: ...] marker gets "fact_ids": []. Internal, never shown."""
+
 # --------------------------------------------------------------------------- packs
 
 _COMMON_RULES = """Hard rules for every text:
-- Never invent facts about the candidate or the company. Use only the CANDIDATE and POSTING
-  sections. When a needed fact is missing, write a visible marker such as [CHECK: team name].
+- Never invent facts about the candidate or the company. When a needed fact is missing, write a
+  visible marker such as [CHECK: team name].
 - Direct, specific, human. Short sentences. No cliches (never: "I am writing to express my
   interest", "passionate", "leverage", "dynamic environment", "fast-paced environment",
   "team player", "synergy", "I am excited to apply"; in Italian never: "con la presente",
@@ -390,13 +419,14 @@ _COMMON_RULES = """Hard rules for every text:
 - Never use the em dash or the en dash. Use commas, periods or a plain hyphen."""
 
 
-def _availability_line(language: str) -> str:
-    if language == "it":
-        return AVAILABILITY_SENTENCE["it"]
-    return AVAILABILITY_SENTENCE["en"]
+def _availability_line(language: str, bank: FactBank | None = None) -> str:
+    if bank is not None:
+        return bank.availability_sentence(language)
+    return AVAILABILITY_SENTENCE["it" if language == "it" else "en"]
 
 
-def pack_system(language: str) -> str:
+def pack_system(language: str, bank: FactBank | None = None) -> str:
+    bank = bank or empty_bank()
     lang_name = LANGUAGE_NAMES.get(language, "English")
     greet = "Ciao [NOME]," if language == "it" else "Hi [NOME],"
     return f"""[radar-task: {TASK_PACK}]
@@ -404,39 +434,38 @@ You write application material for one candidate and one posting. The candidate 
 sends everything by hand. Output language: {lang_name}.
 Return ONLY a JSON object:
 {{"cover_letter": string, "form_answers": [{{"question": string, "answer": string}}],
-"linkedin_connection_note": string, "linkedin_message": string, "followup": string}}
+"linkedin_connection_note": string, "linkedin_message": string, "followup": string,
+"claims": [{{"claim": string, "fact_ids": [string]}}]}}
 {_COMMON_RULES}
-cover_letter: at most 230 words, paragraphs separated by blank lines. Line 1 is one sentence that
-starts with "{_availability_line(language)}" (no salutation before it). Then cite at least one
-concrete detail from the posting and at least one concrete project or experience of the candidate
-that matches it. End with a short sign-off and the candidate's name.
+{fact_rules(bank)}
+cover_letter: at most 230 words, 3 or 4 short paragraphs separated by blank lines. Line 1 is
+exactly "{_availability_line(language, bank)}" on its own line (no salutation before it). Then
+cite at least one concrete detail from the posting and at least one concrete project or
+experience from CANDIDATE FACTS that matches it. End with a short sign-off and the candidate's
+name (fact identity.name).
 form_answers: exactly 6 items, answers at most 70 words each:
 1 Why this company? 2 Why this role? 3 Most relevant project? 4 Availability, start date,
-duration and graduation date. 5 Work authorization (use the candidate's citizenship).
+duration and graduation date. 5 Work authorization (use the citizenship fact).
 6 Salary expectations: "[CHECK: ...]" placeholder unless the posting states a range.
 linkedin_connection_note: at most 260 characters, starts "{greet}", for a hiring manager or alum at
 the company, mentions something real from the posting or company, asks ONE specific question,
 never asks for a job or a referral.
 linkedin_message: at most 550 characters, starts "{greet}", same rules as the note, a bit more
-context about the candidate (one concrete project), ONE specific question.
+context about the candidate (one concrete project from the facts), ONE specific question.
 followup: at most 550 characters, starts "{greet}", sent 14 days after applying: names the role,
-recalls ONE concrete project or experience that is already in CANDIDATE and fits the role (never
+recalls ONE concrete project or experience from CANDIDATE FACTS that fits the role (never
 claim new work done "since" applying; if you want to add news, write "[CHECK: novita da
 aggiungere]"), asks politely about the timeline.
-Fact discipline (most important rule): every claim about the candidate must be traceable to a
-line in CANDIDATE, with the same scope. Do not upgrade or generalise: scraping is not NLP, a
-listed skill is not a project, "two pilot gyms" stays two pilot gyms. Never invent projects,
-results, numbers or plans. When unsure, write a [CHECK: ...] marker instead.
+{_CLAIMS_RULE}
 Style: sound like a capable person writing quickly and precisely. Never use: "I am drawn to",
 "I am eager to", "eager to contribute", "I look forward to", "thank you for considering",
 "exactly the", "sono motivato", "motivato a contribuire", "mi piacerebbe molto". The cover
-letter has 3 or 4 short paragraphs separated by blank lines and never mentions salary or
-stipend."""
+letter never mentions salary or stipend."""
 
 
-def pack_user(profile_text: str, posting: Posting, company: Company | None) -> str:
+def pack_user(facts_text: str, posting: Posting, company: Company | None) -> str:
     return (
-        f"CANDIDATE\n{profile_text}\n\n"
+        f"{facts_text}\n\n"
         f"{posting_block(posting, company, DRAFT_POSTING_CHARS)}\n\n"
         f"Apply link: {posting.url}\nToday: {today().isoformat()}"
     )
@@ -461,29 +490,64 @@ _KIND_RULES = {
 }
 
 
-def contact_draft_system(kind: str, language: str) -> str:
+def contact_draft_system(kind: str, language: str, bank: FactBank | None = None) -> str:
+    bank = bank or empty_bank()
     lang_name = LANGUAGE_NAMES.get(language, "English")
     return f"""[radar-task: {TASK_CONTACT}]
 You write {_KIND_RULES.get(kind, _KIND_RULES["linkedin_message"])} from the candidate to the
 CONTACT below, about the posting. Output language: {lang_name}.
-Return ONLY a JSON object: {{"text": string}}
+Return ONLY a JSON object: {{"text": string, "claims": [{{"claim": string, "fact_ids": [string]}}]}}
 {_COMMON_RULES}
+{fact_rules(bank)}
 - Address the contact by first name. Use their role and the candidate's note about why this
   person, if given. Mention something real from the posting or company.
-- Ask ONE specific question. Never ask for a job or a referral directly."""
+- Ask ONE specific question. Never ask for a job or a referral directly.
+{_CLAIMS_RULE}"""
 
 
 def contact_draft_user(
-    profile_text: str, posting: Posting, company: Company | None, contact: Contact
+    facts_text: str, posting: Posting, company: Company | None, contact: Contact
 ) -> str:
     return (
-        f"CANDIDATE\n{profile_text}\n\n"
+        f"{facts_text}\n\n"
         f"{posting_block(posting, company, CONTACT_POSTING_CHARS)}\n\n"
         "CONTACT\n"
         f"Contact name: {contact.name}\n"
         f"Contact role: {contact.role or ''}\n"
         f"Why this person: {contact.why or ''}"
     )
+
+
+# --------------------------------------------------------------------------- verification
+
+VERIFY_SYSTEM = f"""[radar-task: {TASK_VERIFY}]
+You check application texts written for one candidate against the candidate's fact bank. You
+do not rewrite anything.
+Return ONLY a JSON object:
+{{"claims": [{{"text_id": string, "claim": string, "fact_id": string|null,
+"verdict": "supported"|"unsupported"|"check"}}]}}
+Rules:
+- A claim is a sentence (or clause) that states something about the candidate: experience,
+  projects, results, numbers, tools, skills, languages, education, availability, citizenship,
+  plans. List EVERY claim in every text. Skip greetings, sign-offs, questions to the reader and
+  sentences only about the company or the posting.
+- text_id: the id after "###" of the text the claim comes from. claim: copied verbatim.
+- supported: one listed fact in CANDIDATE FACTS backs the claim fully, with the same scope;
+  fact_id is that fact's id (the text in brackets).
+- unsupported: no fact backs it, or it goes beyond the fact (upgraded scope, a number that is not
+  in the facts or is written differently, a skill turned into a project), or it breaks a
+  PROHIBITED item. fact_id: the closest fact id, or the PROHIBITED id it breaks, or null.
+- check: the claim is a [CHECK: ...] marker or depends on one. fact_id: null.
+- Be strict: when unsure, the verdict is unsupported."""
+
+
+def verify_system() -> str:
+    return VERIFY_SYSTEM
+
+
+def verify_user(facts_text: str, texts: Sequence[tuple[str, str]]) -> str:
+    blocks = "\n\n".join(f"### {tid}\n{text.strip()}" for tid, text in texts)
+    return f"{facts_text}\n\n{TEXTS_HEADER}\n{blocks}"
 
 
 # --------------------------------------------------------------------------- fake generator
@@ -494,11 +558,56 @@ def _field(text: str, key: str) -> str:
     return m.group(1).strip() if m else ""
 
 
-def _first_project(user: str) -> tuple[str, str]:
-    m = re.search(r"(?m)^Projects:\n- ([^:\n]+): ?(.*)$", user)
+def parse_fact_lines(user: str, header: str = FACTS_HEADER) -> dict[str, str]:
+    """``{id: text}`` from the ``[id] text`` lines of a prompt section (used by the fake)."""
+    out: dict[str, str] = {}
+    m = re.search(rf"(?m)^{re.escape(header)}\b.*$", user)
     if not m:
-        return "[CHECK: project]", "[CHECK: what it does]"
-    return m.group(1).strip(), m.group(2).strip().rstrip(".")
+        return out
+    for line in user[m.end() :].lstrip("\n").splitlines():
+        lm = _FACT_LINE.match(line.strip())
+        if not lm:
+            break
+        out[lm.group(1)] = lm.group(2)
+    return out
+
+
+def _value(facts: dict[str, str], fid: str) -> str:
+    """The value part of a fact text ("Label, key: value" -> "value")."""
+    text = facts.get(fid, "")
+    key = fid.rsplit(".", 1)[-1].replace("_", " ")
+    marker = f"{key}: "
+    idx = text.find(marker)
+    return (text[idx + len(marker) :] if idx >= 0 else text).strip()
+
+
+def _short(text: str, limit: int = 110) -> str:
+    text = text.strip().rstrip(".")
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:")
+
+
+def _first_project(facts: dict[str, str]) -> tuple[str, str, list[str]]:
+    """(name, what, fact ids) of the first project in the facts."""
+    for fid in facts:
+        m = re.match(r"^projects\.([^.]+)\.name$", fid)
+        if not m:
+            continue
+        base = f"projects.{m.group(1)}"
+        for key in ("what", "problem", "solution"):
+            if f"{base}.{key}" in facts:
+                what = _value(facts, f"{base}.{key}")
+                return _value(facts, fid), _short(what), [fid, f"{base}.{key}"]
+        return _value(facts, fid), "[CHECK: what it does]", [fid]
+    return "[CHECK: project]", "[CHECK: what it does]", []
+
+
+def _first_value(facts: dict[str, str], pattern: str) -> tuple[str, str | None]:
+    for fid in facts:
+        if re.match(pattern, fid):
+            return _value(facts, fid), fid
+    return "", None
 
 
 def _posting_detail(user: str) -> str:
@@ -543,12 +652,16 @@ def _fake_score(user: str) -> str:
 
 def _fake_pack(system: str, user: str) -> str:
     it = "Output language: Italian" in system
+    facts = parse_fact_lines(user)
     title = _field(user, "Title")[:70] or "[CHECK: role]"
     company = _field(user, "Company")[:60] or "[CHECK: company]"
-    name = _field(user, "Name") or "[CHECK: name]"
-    citizenship = _field(user, "Citizenship") or "[CHECK: citizenship]"
-    graduation = _field(user, "Graduation") or "[CHECK: graduation date]"
-    pname, pwhat = _first_project(user)
+    name = _value(facts, "identity.name") or "[CHECK: name]"
+    citizenship = _value(facts, "identity.citizenship") or "[CHECK: citizenship]"
+    graduation, grad_id = _first_value(facts, r"^education\.[^.]+\.dates$")
+    graduation = graduation or "[CHECK: graduation date]"
+    pname, pwhat, pids = _first_project(facts)
+    avail_key = "meta.decisions.availability_it" if it else "meta.decisions.availability"
+    availability = facts.get(avail_key) or AVAILABILITY_SENTENCE["it" if it else "en"]
     detail = _posting_detail(user)
     if it:
         detail_s = (
@@ -556,24 +669,20 @@ def _fake_pack(system: str, user: str) -> str:
             if detail
             else "[CHECK: aggiungi un dettaglio concreto dall'annuncio]."
         )
+        project_s = f"Nel progetto {pname} ho lavorato su questo: {pwhat}."
         cover = (
-            f"{AVAILABILITY_SENTENCE['it']}\n\n"
-            f"Mi candido per il ruolo di {title} presso {company}. "
-            f"{detail_s} Nel progetto {pname} ({pwhat}) ho lavorato su un problema "
-            "vicino a questo.\n\n"
+            f"{availability}\n\n"
+            f"Mi candido per il ruolo di {title} presso {company}. {detail_s}\n\n"
+            f"{project_s}\n\n"
             "[CHECK: aggiungi un secondo collegamento concreto tra la tua esperienza "
             "e il ruolo.]\n\n"
             f"Cordiali saluti,\n{name}"
         )
         answers = [
             ("Perché questa azienda?", f"[CHECK: motivo specifico per {company}]"),
-            ("Perché questo ruolo?", f"Il ruolo {title} è in linea con il progetto {pname}."),
+            ("Perché questo ruolo?", f"Il ruolo {title} è vicino al progetto {pname}."),
             ("Progetto più rilevante?", f"{pname}: {pwhat}."),
-            (
-                "Disponibilità e durata?",
-                "Full-time da febbraio 2027, inizio flessibile fino ad aprile 2027. "
-                f"Laurea: {graduation}. [CHECK: durata]",
-            ),
+            ("Disponibilità e durata?", f"{availability} Laurea: {graduation}. [CHECK: durata]"),
             ("Permesso di lavoro?", f"{citizenship}."),
             (
                 "Aspettative economiche?",
@@ -590,7 +699,7 @@ def _fake_pack(system: str, user: str) -> str:
         )
         follow = (
             f"Ciao [NOME], due settimane fa mi sono candidato per {title}. "
-            f"Nel frattempo ho approfondito {pname}. "
+            f"Il mio progetto {pname} è vicino al ruolo. "
             "Ci sono novità sulle tempistiche della selezione?"
         )
     else:
@@ -599,21 +708,21 @@ def _fake_pack(system: str, user: str) -> str:
             if detail
             else "[CHECK: add one concrete detail from the posting]."
         )
+        project_s = f"In my project {pname} I worked on this: {pwhat}."
         cover = (
-            f"{AVAILABILITY_SENTENCE['en']}\n\n"
-            f"I am applying for the {title} role at {company}. "
-            f"{detail_s} In my project {pname} ({pwhat}) I worked on a closely related problem.\n\n"
+            f"{availability}\n\n"
+            f"I am applying for the {title} role at {company}. {detail_s}\n\n"
+            f"{project_s}\n\n"
             "[CHECK: add a second concrete link between your experience and the role.]\n\n"
             f"Best regards,\n{name}"
         )
         answers = [
             ("Why this company?", f"[CHECK: specific reason for {company}]"),
-            ("Why this role?", f"The {title} role matches the work I did in {pname}."),
+            ("Why this role?", f"The {title} role is close to my project {pname}."),
             ("Most relevant project?", f"{pname}: {pwhat}."),
             (
                 "Availability, start date and duration?",
-                "Full-time from February 2027, start flexible until April 2027. "
-                f"Graduation: {graduation}. [CHECK: duration]",
+                f"{availability} Graduation: {graduation}. [CHECK: duration]",
             ),
             ("Work authorization?", f"{citizenship}."),
             ("Salary expectations?", "[CHECK: salary expectation, the posting states no range]"),
@@ -628,9 +737,16 @@ def _fake_pack(system: str, user: str) -> str:
         )
         follow = (
             f"Hi [NOME], two weeks ago I applied for {title}. "
-            f"Since then I kept working on {pname}. "
+            f"My project {pname} is close to the role. "
             "Is there any update on the timeline for the selection?"
         )
+    claims = [
+        {"claim": availability, "fact_ids": [avail_key]},
+        {"claim": project_s, "fact_ids": pids},
+        {"claim": f"{citizenship}.", "fact_ids": ["identity.citizenship"]},
+    ]
+    if grad_id:
+        claims.append({"claim": f"{graduation}", "fact_ids": [grad_id]})
     return json.dumps(
         {
             "cover_letter": cover,
@@ -638,6 +754,7 @@ def _fake_pack(system: str, user: str) -> str:
             "linkedin_connection_note": note[:280],
             "linkedin_message": msg[:600],
             "followup": follow[:600],
+            "claims": claims,
         },
         ensure_ascii=False,
     )
@@ -645,20 +762,130 @@ def _fake_pack(system: str, user: str) -> str:
 
 def _fake_contact(system: str, user: str) -> str:
     it = "Output language: Italian" in system
+    facts = parse_fact_lines(user)
     first = (_field(user, "Contact name").split() or ["[NOME]"])[0]
     title = _field(user, "Title")[:70]
     company = _field(user, "Company")[:60]
+    pname, _, pids = _first_project(facts)
     if it:
         text = (
-            f"Ciao {first}, ho visto la posizione {title} in {company}. "
+            f"Ciao {first}, ho visto la posizione {title} in {company}. Ho lavorato a {pname}. "
             "Quale competenza conta di più nei primi mesi nel team?"
         )
+        claim = f"Ho lavorato a {pname}."
     else:
         text = (
-            f"Hi {first}, I saw the {title} opening at {company}. "
+            f"Hi {first}, I saw the {title} opening at {company}. I built {pname}. "
             "Which skill matters most in the first months on the team?"
         )
-    return json.dumps({"text": text}, ensure_ascii=False)
+        claim = f"I built {pname}."
+    return json.dumps(
+        {"text": text, "claims": [{"claim": claim, "fact_ids": pids}]}, ensure_ascii=False
+    )
+
+
+_FIRST_PERSON = re.compile(  # "I" stays case-sensitive: "i" is an Italian article
+    r"\b(I|I'm|I've|I'd|[Mm]y|[Mm]e|[Mm]ine)\b"
+    r"|\b([Hh]o|[Mm]io|[Mm]ia|[Mm]iei|[Mm]ie|[Ss]ono|[Mm]i|[Dd]isponibile|[Ll]aurea)\b"
+)
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+_GREETING = re.compile(
+    r"^(hi|hello|dear|ciao|gentile|best regards|kind regards|regards|cordiali saluti|"
+    r"saluti|grazie|thank you)\b",
+    re.I,
+)
+_TOKEN = re.compile(r"[a-zà-ÿ0-9]{4,}")
+_FAKE_STOP = frozenset(
+    [
+        "with",
+        "from",
+        "that",
+        "this",
+        "have",
+        "your",
+        "role",
+        "team",
+        "work",
+        "about",
+        "when",
+        "what",
+        "which",
+        "into",
+        "they",
+        "worked",
+        "project",
+        "progetto",
+        "built",
+        "questo",
+        "questa",
+        "sono",
+        "della",
+        "nella",
+        "ruolo",
+    ]
+)
+
+
+_NON_CLAIM = re.compile(
+    r"\b(applying|applied|apply|saw the|candido|candidato|candidata|ho visto)\b", re.I
+)
+
+
+def claim_sentences(text: str) -> list[str]:
+    """Sentences of ``text`` that state something about the candidate (fake verifier)."""
+    out = []
+    for raw in _SENTENCE_SPLIT.split(text):
+        s = raw.strip()
+        if not s or s.endswith("?") or (_GREETING.match(s) and len(s.split()) <= 4):
+            continue
+        about_me = _FIRST_PERSON.search(s) or re.search(r"\d", s)
+        if "[CHECK" in s or (about_me and not _NON_CLAIM.search(s)):
+            out.append(s)
+    return out
+
+
+def _tokens(text: str) -> set[str]:
+    return set(_TOKEN.findall(text.lower())) - _FAKE_STOP
+
+
+def _fake_verify(user: str) -> str:
+    facts = parse_fact_lines(user)
+    fact_tokens = {fid: _tokens(_value(facts, fid)) for fid in facts}
+    m = re.search(rf"(?m)^{TEXTS_HEADER}$", user)
+    body = user[m.end() :] if m else ""
+    claims = []
+    for block in re.split(r"(?m)^### ", body)[1:]:
+        tid, _, text = block.partition("\n")
+        for sentence in claim_sentences(text):
+            if "[CHECK" in sentence:
+                claims.append(
+                    {"text_id": tid.strip(), "claim": sentence, "fact_id": None, "verdict": "check"}
+                )
+                continue
+            words = _tokens(sentence)
+            best, score = None, 0
+            # A project name or a short fact value quoted verbatim counts as support.
+            for fid in sorted(facts, key=lambda f: not f.endswith(".name")):
+                value = _value(facts, fid)
+                if 4 <= len(value) <= 40 and re.search(
+                    rf"(?<!\w){re.escape(value.rstrip('.'))}(?!\w)", sentence, re.I
+                ):
+                    best, score = fid, 2
+                    break
+            for fid, toks in fact_tokens.items():
+                shared = len(words & toks)
+                if shared > score:
+                    best, score = fid, shared
+            supported = best is not None and score >= 2
+            claims.append(
+                {
+                    "text_id": tid.strip(),
+                    "claim": sentence,
+                    "fact_id": best if score >= 1 else None,
+                    "verdict": "supported" if supported else "unsupported",
+                }
+            )
+    return json.dumps({"claims": claims}, ensure_ascii=False)
 
 
 def fake_completion(system: str, user: str) -> str:
@@ -671,4 +898,6 @@ def fake_completion(system: str, user: str) -> str:
         return _fake_pack(system, user)
     if task == TASK_CONTACT:
         return _fake_contact(system, user)
+    if task == TASK_VERIFY:
+        return _fake_verify(user)
     return json.dumps({"text": "ok"})

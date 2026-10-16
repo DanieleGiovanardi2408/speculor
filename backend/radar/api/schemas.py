@@ -130,6 +130,44 @@ class ContactOut(BaseModel):
     why: str | None
 
 
+class VerificationClaim(BaseModel):
+    text_id: str  # cover_letter | form_answers.<n> (1-based) | <draft kind>
+    claim: str
+    fact_id: str | None
+    verdict: str  # supported | unsupported | check
+    source: str = "llm"  # llm | precheck | llm+precheck
+    reason: str | None = None
+
+
+class VerificationCounts(BaseModel):
+    supported: int = 0
+    unsupported: int = 0
+    check: int = 0
+    total: int = 0
+
+
+class DrafterClaim(BaseModel):
+    claim: str
+    fact_ids: list[str]
+
+
+class Verification(BaseModel):
+    """Fact check of generated texts against the fact bank (see radar.llm.verify)."""
+
+    version: int = 1
+    status: str  # ok | precheck_only
+    verified_at: UTCDateTime
+    provider: str | None = None
+    model: str | None = None
+    error: str | None = None
+    facts_source: str = ""
+    facts_version: str | None = None
+    texts_hash: str = ""
+    counts: VerificationCounts
+    claims: list[VerificationClaim]
+    drafter_claims: list[DrafterClaim] = []
+
+
 class DraftOut(BaseModel):
     id: int
     posting_id: int | None
@@ -141,6 +179,8 @@ class DraftOut(BaseModel):
     text: str
     status: str
     style_issues: list[str]
+    verification: Verification | None = None
+    verification_stale: bool = False  # the text changed after the check
     send_result: str | None
     created_at: UTCDateTime
     updated_at: UTCDateTime
@@ -164,6 +204,8 @@ class PackOut(BaseModel):
     apply_link: str
     language: str
     style_issues: list[str]
+    verification: Verification | None = None
+    verification_stale: bool = False  # a text changed after the check: re-verify
     provider: str
     model: str
     updated_at: UTCDateTime

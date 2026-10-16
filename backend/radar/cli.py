@@ -21,6 +21,11 @@ app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
 app.add_typer(connectors_app, name="connectors")
+packs_app = typer.Typer(help="Application packs: build, regenerate, verify against the facts.")
+app.add_typer(packs_app, name="packs")
+facts_app = typer.Typer(no_args_is_help=True, help="Fact bank (config/facts.yaml).")
+app.add_typer(facts_app, name="facts")
+CONFIG_NAMES = ("profile", "companies", "rules", "facts")
 console = Console()
 
 
@@ -95,18 +100,123 @@ def score(limit: Annotated[int, typer.Option()] = 60) -> None:
     console.print(stats)
 
 
-@app.command()
+@packs_app.callback(invoke_without_command=True)
 def packs(
+    ctx: typer.Context,
     limit: Annotated[int, typer.Option()] = 5,
     posting_id: Annotated[int | None, typer.Option(help="Build the pack for one posting")] = None,
 ) -> None:
     """Build application packs for Alta postings that do not have one yet."""
+    if ctx.invoked_subcommand is not None:
+        return
     from radar.db import session_scope
     from radar.llm.packs import build_packs
 
     with session_scope() as s:
         stats = build_packs(s, run_id=None, limit=limit, posting_id=posting_id)
     console.print(stats)
+
+
+@packs_app.command("regenerate")
+def packs_regenerate(
+    posting_id: Annotated[
+        list[int] | None, typer.Option("--posting-id", help="Posting to regenerate (repeatable)")
+    ] = None,
+    all_packs: Annotated[bool, typer.Option("--all", help="Every posting that has a pack")] = False,
+    out_dir: Annotated[
+        Path | None, typer.Option(help="Where to write before/after snapshots and diffs")
+    ] = None,
+) -> None:
+    """Regenerate packs (new texts + fact check) and write before/after snapshots to diff.
+
+    Approved, sent and contact drafts are kept. Texts go to files under data/ (gitignored),
+    never to the terminal."""
+    from radar.db import session_scope
+    from radar.llm.packs import build_packs
+    from radar.llm.snapshots import pack_ids_for, prepare_dir, snapshot, write_diff
+
+    target = out_dir or get_settings().data_dir / "packs_diff"
+    with session_scope() as s:
+        ids = pack_ids_for(s, posting_id or [], all_packs)
+        if not ids:
+            console.print("Nessun annuncio indicato (usa --posting-id ID o --all).")
+            raise typer.Exit(1)
+        run_dir = prepare_dir(target)
+        for pid in ids:
+            before = snapshot(s, pid)
+            stats = build_packs(s, run_id=None, limit=1, posting_id=pid)
+            s.commit()
+            after = snapshot(s, pid)
+            path = write_diff(run_dir, pid, before, after)
+            console.print(
+                f"posting {pid}: built={stats.get('built', 0)} "
+                f"unsupported={after.unsupported if after else '-'} -> {path}"
+            )
+            if stats.get("stopped"):
+                console.print(f"[yellow]stopped: {stats['stopped']}[/yellow]")
+                break
+    console.print(f"Snapshots in {run_dir}")
+
+
+@packs_app.command("verify")
+def packs_verify(
+    pack_id: Annotated[list[int] | None, typer.Option("--pack-id", help="Repeatable")] = None,
+    posting_id: Annotated[list[int] | None, typer.Option("--posting-id", help="Repeatable")] = None,
+    all_packs: Annotated[bool, typer.Option("--all", help="Every pack")] = False,
+    llm: Annotated[bool, typer.Option("--llm/--no-llm", help="Run the LLM verifier")] = True,
+) -> None:
+    """Re-check existing packs against the fact bank (texts are not changed). Counts only."""
+    from sqlmodel import col, select
+
+    from radar.db import session_scope
+    from radar.facts import load_facts
+    from radar.llm.verify import verify_pack
+    from radar.models import ApplicationPack
+
+    bank = load_facts()
+    with session_scope() as s:
+        stmt = select(ApplicationPack).order_by(col(ApplicationPack.id))
+        if not all_packs:
+            if not pack_id and not posting_id:
+                console.print("Indica --pack-id, --posting-id o --all.")
+                raise typer.Exit(1)
+            stmt = stmt.where(
+                col(ApplicationPack.id).in_(pack_id or [])
+                | col(ApplicationPack.posting_id).in_(posting_id or [])
+            )
+        for pack in s.exec(stmt).all():
+            v = verify_pack(s, pack, use_llm=llm, bank=bank)
+            s.commit()
+            c = v["counts"]
+            note = f" ({v['error']})" if v.get("error") else ""
+            console.print(
+                f"pack {pack.id} (posting {pack.posting_id}): {c['supported']} supportate, "
+                f"[red]{c['unsupported']} non supportate[/red], {c['check']} da verificare"
+                f"{note}"
+            )
+            if v.get("error") == "rate_limit":
+                break
+
+
+@facts_app.command("check")
+def facts_check() -> None:
+    """Validate the fact bank and print counts (never the facts themselves)."""
+    from radar.facts import FactsError, load_facts
+    from radar.llm.style import AVAILABILITY_SENTENCE
+
+    try:
+        bank = load_facts()
+    except FactsError as exc:
+        console.print(f"[red]Fact bank non valido:[/red] {exc}")
+        raise typer.Exit(1) from None
+    console.print(
+        f"source={bank.source} version={bank.version} facts={len(bank.facts)} "
+        f"prohibitions={len(bank.prohibitions)} excluded={len(bank.excluded)}"
+    )
+    same = bank.availability == AVAILABILITY_SENTENCE
+    console.print(f"availability matches style.py: {'yes' if same else 'NO'}")
+    for w in bank.warnings:
+        console.print(f"[yellow]warning:[/yellow] {w}")
 
 
 @app.command()
@@ -208,14 +318,14 @@ def db_secure() -> None:
 
 @config_app.command("push")
 def config_push() -> None:
-    """Copy config/{profile,companies,rules}.yaml into the settings table."""
+    """Copy config/{profile,companies,rules,facts}.yaml into the settings table."""
     import yaml
 
     from radar.db import session_scope, set_setting
 
     cfg_dir = get_settings().config_dir
     with session_scope() as s:
-        for name in ("profile", "companies", "rules"):
+        for name in CONFIG_NAMES:
             path = cfg_dir / f"{name}.yaml"
             if path.exists():
                 set_setting(s, f"config:{name}", yaml.safe_load(path.read_text("utf-8")))
@@ -230,7 +340,7 @@ def config_pull() -> None:
     from radar.db import get_setting
 
     cfg_dir = get_settings().config_dir
-    for name in ("profile", "companies", "rules"):
+    for name in CONFIG_NAMES:
         path = cfg_dir / f"{name}.yaml"
         value = get_setting(f"config:{name}")
         if value is not None and not path.exists():

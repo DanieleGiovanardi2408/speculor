@@ -11,6 +11,7 @@ from radar.llm.provider import RateLimitExhausted
 from radar.models import ApplicationPack, Contact, Draft, LLMUsage, Score
 
 EM = "—"
+VERIFY_EMPTY = '{"claims": []}'
 
 
 def pack_json(**over: object) -> str:
@@ -80,7 +81,19 @@ def test_fake_end_to_end(session: Session, fake_env: None) -> None:
         assert "[NOME]" in d.text
         assert style.check(d.text, d.kind, "en") == []
     usage = session.exec(select(LLMUsage)).all()
-    assert [(u.purpose, u.requests) for u in usage] == [("pack", 1)]
+    assert sorted((u.purpose, u.requests) for u in usage) == [("pack", 1), ("verify", 1)]
+    assert stats["verify_requests"] == 1
+
+    v = pack.verification
+    assert v is not None and v["status"] == "ok" and v["provider"] == "fake"
+    assert v["facts_source"] == "facts.example.yaml"
+    assert v["counts"]["total"] == len(v["claims"]) > 0
+    assert any(c["claim"].startswith("Available full-time") for c in v["drafter_claims"])
+    by_text = {c["text_id"] for c in v["claims"]}
+    assert "cover_letter" in by_text
+    for d in ds:
+        assert d.verification is not None
+        assert all(c["text_id"] == d.kind for c in d.verification["claims"])
 
     # second run: nothing to do
     assert packs.build_packs(session, run_id=None, limit=5)["built"] == 0
@@ -138,7 +151,7 @@ def test_one_regeneration_then_store_issues(
 ) -> None:
     make_posting(session, priority="Alta")
     bad = pack_json(linkedin_message=f"Hi [NOME], I am passionate {EM} truly. What do you build?")
-    fake = ScriptedProvider([bad, bad])
+    fake = ScriptedProvider([bad, bad, VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
     stats = packs.build_packs(session, run_id=None, limit=5)
     assert stats["built"] == 1 and stats["requests"] == 2
@@ -153,7 +166,7 @@ def test_regeneration_fixes(
 ) -> None:
     make_posting(session, priority="Alta")
     bad = pack_json(cover_letter="To whom it may concern, I am a team player.")
-    fake = ScriptedProvider([bad, pack_json()])
+    fake = ScriptedProvider([bad, pack_json(), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     (pack,) = session.exec(select(ApplicationPack)).all()
@@ -167,7 +180,7 @@ def test_overlong_drafts_trimmed(
     make_posting(session, priority="Alta")
     sentence = "I enjoyed reading about your forecasting work."
     long = "Hi [NOME], " + " ".join(sentence for _ in range(30))
-    fake = ScriptedProvider([pack_json(linkedin_connection_note=long, followup=long)])
+    fake = ScriptedProvider([pack_json(linkedin_connection_note=long, followup=long), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     by_kind = {d.kind: d for d in drafts(session)}
@@ -185,12 +198,16 @@ def test_salary_kept_when_posting_states_range(
         priority="Alta",
         raw_text="Internship in Milan. Stipend: EUR 1,200 per month. Python required.",
     )
-    fake = ScriptedProvider([pack_json()])
+    fake = ScriptedProvider([pack_json(), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     (pack,) = session.exec(select(ApplicationPack)).all()
     assert pack.form_answers is not None
     assert pack.form_answers[-1]["answer"] == "30k EUR gross per year."
+    # 30 is neither in the facts nor in the posting: the pre-check flags it.
+    assert pack.verification is not None
+    flagged = [c for c in pack.verification["claims"] if c["text_id"] == "form_answers.6"]
+    assert flagged and flagged[0]["verdict"] == "unsupported" and "30" in flagged[0]["reason"]
 
 
 def test_invalid_json_repair_then_skip(

@@ -952,6 +952,34 @@ def _run_stats(
     }
 
 
+def _verify_demo(session: Session, packs: list[ApplicationPack]) -> None:
+    """Fact check of the demo texts against the fictional example fact bank, with the offline
+    FakeProvider (no usage rows): shows the *Verifica fatti* panel with real-looking results."""
+    from radar.facts import example_path, load_facts
+    from radar.llm import verify
+    from radar.llm.provider import FakeProvider
+
+    bank = load_facts(example_path())
+    fake = FakeProvider()
+
+    def run(texts: list[tuple[str, str]], posting: Posting | None) -> dict[str, Any]:
+        v = verify.verify_texts(
+            bank, texts, provider=fake, posting_text=verify.posting_text(posting)
+        )
+        v["provider"], v["model"] = "groq", DRAFT_MODEL  # the demo packs claim this model
+        return v
+
+    for pack in packs:
+        posting = session.get(Posting, pack.posting_id)
+        texts = verify.pack_texts(pack.cover_letter, pack.form_answers or [], {})
+        verify.store_pack_verification(session, pack, run(texts, posting))
+    for d in session.exec(select(Draft)).all():
+        if d.status in ("draft", "approved"):
+            posting = session.get(Posting, d.posting_id) if d.posting_id else None
+            d.verification = run([(d.kind, d.text)], posting)
+            session.add(d)
+
+
 def load_demo(session: Session) -> dict[str, int]:
     """Insert the fictional dataset. Returns counts; ``{"skipped": 1}`` if already loaded."""
     if session.exec(select(Company).where(Company.name == COMPANIES[0].name)).first():
@@ -1329,6 +1357,8 @@ def load_demo(session: Session) -> dict[str, int]:
             )
         )
         bump("drafts")
+    session.flush()
+    _verify_demo(session, list(packs.values()))
 
     # --- applications ------------------------------------------------------------------
     # (posting key, company idx, role, city, days ago, channel, cv, stage, responded, next)

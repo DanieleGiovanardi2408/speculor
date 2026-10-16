@@ -14,6 +14,7 @@ from sqlmodel import Session, SQLModel, col, select
 
 from radar.api import schemas
 from radar.api.routes.skip import split_skip
+from radar.llm import verify
 from radar.models import (
     Application,
     ApplicationPack,
@@ -313,6 +314,8 @@ def drafts_out(session: Session, drafts: Sequence[Draft]) -> list[schemas.DraftO
                 text=d.text,
                 status=d.status,
                 style_issues=list(d.style_issues or []),
+                verification=verification_out(d.verification),
+                verification_stale=verify.draft_is_stale(d),
                 send_result=d.send_result,
                 created_at=d.created_at,
                 updated_at=d.updated_at,
@@ -323,6 +326,16 @@ def drafts_out(session: Session, drafts: Sequence[Draft]) -> list[schemas.DraftO
             )
         )
     return out
+
+
+def verification_out(value: Any) -> schemas.Verification | None:
+    """Stored verification JSON -> schema; None when absent or unreadable (never a 500)."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        return schemas.Verification.model_validate(value)
+    except ValueError:
+        return None
 
 
 def draft_out(session: Session, d: Draft) -> schemas.DraftOut:
@@ -353,6 +366,8 @@ def pack_out(session: Session, pack: ApplicationPack) -> schemas.PackOut:
         apply_link=pack.apply_link,
         language=pack.language,
         style_issues=list(pack.style_issues or []),
+        verification=verification_out(pack.verification),
+        verification_stale=verify.is_stale(session, pack),
         provider=pack.provider,
         model=pack.model,
         updated_at=pack.updated_at,

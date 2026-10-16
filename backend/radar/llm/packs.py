@@ -5,6 +5,13 @@ tier's per-minute token budget), one repair request if the JSON is invalid, and 
 regeneration if the texts still break the writing rules after ``style.fix``. Remaining issues are
 stored in ``style_issues``. Nothing is ever sent: drafts are created with status "draft".
 
+Facts: the only source of candidate facts is the fact bank (``radar.facts``), rendered as
+``[id] text`` lines; on Groq only the core facts plus the ones most related to the posting are
+sent (``PACK_FACTS_CHARS``). ``config/profile.yaml`` is used here only for the CV versions.
+After drafting, a second request (``radar.llm.verify``) checks every claim against the facts;
+the result is stored on the pack and on its outreach drafts (``verification``). Texts are never
+rewritten by the verifier.
+
 Resume: each pack is committed when built; the next run picks Alta postings that still have no
 pack (or whose pack's content_hash is stale).
 """
@@ -22,7 +29,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlmodel import Session, col, select
 
 from radar import config as radar_config
-from radar.llm import prompts, style
+from radar.facts import FactBank, load_facts, select_facts
+from radar.llm import prompts, style, verify
 from radar.llm.provider import (
     LLMError,
     LLMProvider,
@@ -39,6 +47,7 @@ from radar.timeutil import today, utcnow
 log = logging.getLogger(__name__)
 
 PACK_MAX_TOKENS = 3000
+PACK_FACTS_CHARS = 8000  # rendered facts per drafting prompt on Groq/fake (Anthropic: all)
 CONTACT_MAX_TOKENS = 900
 MAX_CONSECUTIVE_ERRORS = 3
 OUTREACH_KINDS = ("linkedin_connection_note", "linkedin_message", "followup")
@@ -69,6 +78,12 @@ class PackOut(BaseModel):
     linkedin_connection_note: str = Field(min_length=10)
     linkedin_message: str = Field(min_length=10)
     followup: str = Field(min_length=10)
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("claims", mode="before")
+    @classmethod
+    def _claims(cls, v: Any) -> Any:
+        return verify.normalize_drafter_claims(v)
 
     @field_validator("form_answers", mode="before")
     @classmethod
@@ -85,6 +100,7 @@ class StyledPack(BaseModel):
     pack_issues: list[str]
     draft_issues: dict[str, list[str]]
     violations: list[str]  # what would justify a regeneration
+    claims: list[dict[str, Any]] = []  # the drafter's own claim -> fact ids mapping
 
 
 def parse_pack(text: str) -> PackOut:
@@ -136,6 +152,7 @@ def apply_style(pack: PackOut, language: str, posting_text: str | None) -> Style
         pack_issues=pack_issues,
         draft_issues=draft_issues,
         violations=violations,
+        claims=pack.claims,
     )
 
 
@@ -243,6 +260,13 @@ def _generate(
     return regenerated
 
 
+def facts_for(bank: FactBank, provider: LLMProvider, query: str) -> str:
+    """The fact block for a drafting prompt (budgeted unless the provider is Anthropic)."""
+    budget = None if provider.name == "anthropic" else PACK_FACTS_CHARS
+    facts = select_facts(bank, query, budget or 10**9)
+    return prompts.facts_block(bank, facts)
+
+
 def _store_pack(
     session: Session,
     posting: Posting,
@@ -250,6 +274,7 @@ def _store_pack(
     language: str,
     cv_version: str,
     result: LLMResult,
+    verification: dict[str, Any] | None = None,
 ) -> ApplicationPack:
     assert posting.id is not None
     pack = session.exec(
@@ -294,6 +319,8 @@ def _store_pack(
             )
         )
     session.flush()
+    if verification is not None:
+        verify.store_pack_verification(session, pack, verification)
     return pack
 
 
@@ -309,6 +336,8 @@ def build_packs(
         "requests": 0,
         "input_tokens": 0,
         "output_tokens": 0,
+        "verify_requests": 0,
+        "unsupported_claims": 0,
     }
     if posting_id is not None and not postings:
         stats["error"] = "posting_not_found"
@@ -322,16 +351,18 @@ def build_packs(
         return {"skipped": "missing_key", "candidates": len(postings), "built": 0}
     stats["provider"], stats["model"] = provider.name, provider.model
 
-    profile = radar_config.load_yaml_config("profile")
-    profile_text = prompts.full_profile(profile)
+    profile = radar_config.load_yaml_config("profile")  # CV versions only: facts come from the bank
     cv_version = prompts.default_cv_version(profile)
+    bank = load_facts()
+    verifier = provider if radar_config.get_settings().verify_drafts else None
     pack_ids: list[int] = []
     consecutive_errors = 0
     for posting in postings:
         language = prompts.posting_language(posting)
         company = session.get(Company, posting.company_id) if posting.company_id else None
-        system = prompts.pack_system(language)
-        user = prompts.pack_user(profile_text, posting, company)
+        system = prompts.pack_system(language, bank)
+        context = verify.posting_text(posting)
+        user = prompts.pack_user(facts_for(bank, provider, context), posting, company)
         results: list[LLMResult] = []
         try:
             styled = _generate(provider, system, user, results, language, posting.raw_text)
@@ -357,11 +388,31 @@ def build_packs(
         if styled is None:
             stats["invalid"] += 1
             continue
-        pack = _store_pack(session, posting, styled, language, cv_version, results[-1])
+        verify_results: list[LLMResult] = []
+        verification = verify.verify_texts(
+            bank,
+            verify.pack_texts(styled.cover_letter, styled.form_answers, styled.drafts),
+            provider=verifier,
+            posting_text=context,
+            results=verify_results,
+            drafter_claims=styled.claims,
+        )
+        for r in verify_results:
+            record_usage(session, run_id, "verify", r)
+            stats["verify_requests"] += 1
+            stats["input_tokens"] += r.input_tokens
+            stats["output_tokens"] += r.output_tokens
+        stats["unsupported_claims"] += verification["counts"]["unsupported"]
+        pack = _store_pack(
+            session, posting, styled, language, cv_version, results[-1], verification
+        )
         session.commit()
         if pack.id is not None:
             pack_ids.append(pack.id)
         stats["built"] += 1
+        if verification.get("error") == "rate_limit":
+            stats["stopped"] = "rate_limit"
+            break
     if posting_id is not None and pack_ids:
         stats["pack_id"] = pack_ids[0]
     log.info(
@@ -378,17 +429,18 @@ def build_packs(
 # --------------------------------------------------------------------------- contact drafts
 
 
-def _parse_text(raw: str) -> str:
+def _parse_contact(raw: str) -> tuple[str, list[dict[str, Any]]]:
+    """(text, drafter claims) from a contact-draft answer."""
     try:
         data = extract_json(raw)
     except ValueError:
         if raw.strip() and "{" not in raw:
-            return raw.strip()
+            return raw.strip(), []
         raise
     text = data.get("text")
     if not isinstance(text, str) or not text.strip():
         raise ValueError("missing 'text'")
-    return text
+    return text, verify.normalize_drafter_claims(data.get("claims"))
 
 
 def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: str) -> Draft:
@@ -404,11 +456,12 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
         raise ValueError(f"contact {contact_id} not found")
     provider = get_provider("draft")
 
-    profile = radar_config.load_yaml_config("profile")
+    bank = load_facts()
     language = prompts.posting_language(posting)
     company = session.get(Company, posting.company_id) if posting.company_id else None
-    system = prompts.contact_draft_system(kind, language)
-    user = prompts.contact_draft_user(prompts.full_profile(profile), posting, company, contact)
+    system = prompts.contact_draft_system(kind, language, bank)
+    facts_text = facts_for(bank, provider, verify.posting_text(posting))
+    user = prompts.contact_draft_user(facts_text, posting, company, contact)
 
     results: list[LLMResult] = []
 
@@ -427,11 +480,11 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
     try:
         r = call(user, 0.4)
         try:
-            raw_text = _parse_text(r.text)
+            raw_text, claims = _parse_contact(r.text)
         except ValueError as exc:
             r = call(user + prompts.repair_suffix(r.text, str(exc)), 0.2)
             try:
-                raw_text = _parse_text(r.text)
+                raw_text, claims = _parse_contact(r.text)
             except ValueError as exc2:
                 raise LLMError("draft: model output is not valid") from exc2
         text, issues = style.fix(raw_text, kind, language)
@@ -439,7 +492,9 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
         if remaining:
             r = call(user + prompts.regenerate_suffix(json.dumps({"text": text}), remaining), 0.3)
             with contextlib.suppress(ValueError):  # else keep the first version and its issues
-                text, issues = style.fix(_parse_text(r.text), kind, language)
+                regenerated, new_claims = _parse_contact(r.text)
+                text, issues = style.fix(regenerated, kind, language)
+                claims = new_claims or claims
     finally:
         for res in results:
             record_usage(session, None, "draft", res)
@@ -458,6 +513,15 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
         text=text,
         status="draft",
         style_issues=issues,
+    )
+    verifier = provider if radar_config.get_settings().verify_drafts else None
+    verify.verify_draft(
+        session,
+        draft,
+        provider=verifier,
+        use_llm=verifier is not None,
+        bank=bank,
+        drafter_claims=claims,
     )
     session.add(draft)
     session.flush()

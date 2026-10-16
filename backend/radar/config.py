@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     )
     data_dir: Path = Field(default=REPO_ROOT / "data", validation_alias="RADAR_DATA_DIR")
     config_dir: Path = Field(default=REPO_ROOT / "config", validation_alias="RADAR_CONFIG_DIR")
+    # Fact bank for drafts (radar.facts). Unset: config/facts.yaml, then the example file.
+    facts_path: Path | None = Field(default=None, validation_alias="RADAR_FACTS_PATH")
 
     # LLM
     llm_provider: LLMProviderName = Field(default="groq", validation_alias="RADAR_LLM_PROVIDER")
@@ -39,6 +41,8 @@ class Settings(BaseSettings):
         default=None, validation_alias="RADAR_DRAFT_PROVIDER"
     )
     draft_model: str = Field(default="openai/gpt-oss-120b", validation_alias="RADAR_DRAFT_MODEL")
+    # Second LLM call after drafting that checks every claim against the fact bank.
+    verify_drafts: bool = Field(default=True, validation_alias="RADAR_VERIFY_DRAFTS")
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 
