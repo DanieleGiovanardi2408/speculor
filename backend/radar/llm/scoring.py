@@ -30,6 +30,7 @@ from radar.llm.provider import (
     get_provider,
     record_usage,
 )
+from radar.llm.relevance import Relevance
 from radar.models import Company, Posting, Score
 
 log = logging.getLogger(__name__)
@@ -193,10 +194,43 @@ def _score_one(
         return None
 
 
+def _rules_score(posting: Posting, keyword: str) -> Score:
+    assert posting.id is not None
+    return Score(
+        posting_id=posting.id,
+        content_hash=posting.content_hash,
+        priority="Bassa",
+        why_fits="Nessun punto di contatto forte con i ruoli target.",
+        what_doesnt_fit=f"Ruolo fuori target (area: {keyword}), lontano da AI, dati, "
+        "consulenza, prodotto o VC.",
+        warnings=[],
+        confidence=0.9,
+        provider="rules",
+        model="relevance-v1",
+    )
+
+
 def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str, Any]:
-    postings = pending_postings(session, limit)
+    profile = radar_config.load_yaml_config("profile")
+    relevance = Relevance(profile)
+    # Off-target titles are scored "Bassa" by rule (no LLM call, not counted in `limit`);
+    # the rest are scored by the LLM, target roles first.
+    pool = pending_postings(session, max(limit * 6, limit))
+    auto = 0
+    llm_queue: list[Posting] = []
+    for posting in pool:
+        if relevance.rank(posting.title) == 0:
+            session.add(_rules_score(posting, relevance.offtarget_keyword(posting.title) or "?"))
+            auto += 1
+        else:
+            llm_queue.append(posting)
+    if auto:
+        session.commit()
+    llm_queue.sort(key=lambda p: -relevance.rank(p.title))
+    postings = llm_queue[:limit]
     stats: dict[str, Any] = {
         "candidates": len(postings),
+        "rules_bassa": auto,
         "scored": 0,
         "invalid": 0,
         "errors": 0,
@@ -210,10 +244,15 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
         provider = get_provider("scoring")
     except MissingKeyError:
         log.warning("scoring skipped: missing API key (%d pending)", len(postings))
-        return {"skipped": "missing_key", "candidates": len(postings), "scored": 0}
+        return {
+            "skipped": "missing_key",
+            "candidates": len(postings),
+            "rules_bassa": auto,
+            "scored": 0,
+        }
     stats["provider"], stats["model"] = provider.name, provider.model
 
-    profile_text = prompts.condense_profile(radar_config.load_yaml_config("profile"))
+    profile_text = prompts.condense_profile(profile)
     system = prompts.scoring_system()
     consecutive_errors = 0
     for posting in postings:

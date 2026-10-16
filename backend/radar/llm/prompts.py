@@ -315,9 +315,15 @@ Return ONLY a JSON object with exactly these keys:
 Rules:
 - priority: Alta = strong match with the target roles, skills and start window (apply now);
   Media = plausible with a clear gap; Bassa = weak match.
-- why_fits and what_doesnt_fit: write in ITALIAN, at most 2 short sentences each, concrete
-  (name the skill, project or requirement). No generic praise. If nothing blocks, write
-  "Nessun ostacolo evidente.".
+- why_fits: ITALIAN, at most 2 short sentences. Connect one specific CANDIDATE item
+  (experience, project, skill) to one specific POSTING requirement, e.g. "Il lavoro sugli
+  scraper in Acme corrisponde alla pipeline dati richiesta.". Do not just list the posting's
+  requirements. If nothing connects, write "Nessun punto di contatto forte.".
+- what_doesnt_fit: ITALIAN, at most 2 short sentences, the main concrete gap or blocker (skill,
+  language, start date, seniority, location). If nothing blocks, write "Nessun ostacolo evidente.".
+- The candidate is looking for an INTERNSHIP or junior role in AI/LLM engineering, data
+  science/ML, forward deployed engineering, AI consulting, product/strategy in tech or venture
+  capital. Roles outside these areas are Bassa even if the candidate could do them.
 - start_window: start date or period as stated in the posting, else null.
 - language_requirements: languages the posting requires, e.g. ["English C1", "German"]; [] if none.
 - warnings: short Italian notes on blockers (deadline passed, must be enrolled as a student,

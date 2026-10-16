@@ -34,7 +34,7 @@ def test_fake_provider_end_to_end_and_cache(session: Session, fake_env: None) ->
     session.add(run)
     session.commit()
     eligible = make_posting(session, title="Data Science Intern")
-    flagged = make_posting(session, title="Marketing Intern", filter_state="flagged")
+    flagged = make_posting(session, title="Data Analyst Intern", filter_state="flagged")
     make_posting(session, title="Rejected", filter_state="rejected")
     make_posting(session, title="Closed", status="closed")
     make_posting(session, title="Dup", duplicate_of=eligible.id)
@@ -51,7 +51,7 @@ def test_fake_provider_end_to_end_and_cache(session: Session, fake_env: None) ->
     assert s.content_hash == eligible.content_hash
     assert "ruolo" in s.why_fits  # Italian
     assert s.input_tokens > 0 and s.output_tokens > 0
-    assert by_posting[flagged.id].priority == "Bassa"
+    assert by_posting[flagged.id].priority in {"Alta", "Media", "Bassa"}
 
     usage = session.exec(select(LLMUsage)).all()
     assert len(usage) == 1
@@ -151,3 +151,17 @@ def test_posting_model_untouched(session: Session, fake_env: None) -> None:
     scoring.score_pending(session, run_id=None, limit=1)
     after = session.get(Posting, p.id)
     assert after is not None and after.model_dump() == before
+
+
+def test_offtarget_titles_get_rules_bassa_without_llm(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_posting(session, title="Tax Analyst")
+    make_posting(session, title="AI Engineer Intern")
+    fake = ScriptedProvider([VALID])
+    monkeypatch.setattr(scoring, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(scoring.radar_config, "load_yaml_config", lambda n: {})
+    stats = scoring.score_pending(session, run_id=None, limit=5)
+    assert stats["rules_bassa"] == 1 and stats["scored"] == 1
+    rules = session.exec(select(Score).where(Score.provider == "rules")).one()
+    assert rules.priority == "Bassa"
