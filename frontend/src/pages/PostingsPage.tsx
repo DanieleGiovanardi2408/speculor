@@ -26,6 +26,7 @@ const SORT_OPTIONS: { value: PostingSort; label: string }[] = [
   { value: "deadline", label: "Scadenza" },
   { value: "company", label: "Azienda" },
   { value: "first_seen", label: "Più recenti" },
+  { value: "similarity", label: "Affinità" },
 ];
 
 export type View = "stage" | "laurea" | "scartati";

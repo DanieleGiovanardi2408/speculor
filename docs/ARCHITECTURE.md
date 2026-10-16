@@ -15,7 +15,8 @@ flowchart LR
         S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
         N --> C["Closed check<br/>+ change_events (diff)"]
         C --> F["Hard filters<br/>config/rules.yaml<br/>+ post_graduation track"]
-        F --> RL["Title relevance<br/>(off-target = Bassa, no LLM)"]
+        F --> EM["Local similarity<br/>(embeddings, optional)"]
+        EM --> RL["Title relevance<br/>(off-target = Bassa, no LLM)"]
         RL --> L["LLM scorer<br/>Groq / Anthropic / fake"]
         L --> P["Packs + outreach drafts"]
         P --> R["Run stats + report"]
@@ -40,7 +41,7 @@ flowchart LR
 | API | `radar/api/` | JSON API used by the web app (contract in [API.md](API.md)); optional Supabase JWT auth with an allowed email (off by default, see [RUNNING.md](RUNNING.md#self-hosting-on-postgres-optional)) |
 | Web app | `frontend/` | Vite + React + TanStack Query, Italian UI, local only. *Oggi*, *Annunci* (*Stage* \| *Dopo la laurea* \| *Scartati*, keyboard shortcuts), *Pacchetto*, *Approvazioni*, *Candidature*, *Aziende*, *Impostazioni*, *Esecuzioni*. axe-clean (WCAG 2.1 AA) at 1280 and 390 px |
 | Sender | `radar/send.py` | `radar send`: interactive, local-only sending of approved LinkedIn drafts through linkedin-cli |
-| CLI | `radar/cli.py` | `init-db`, `seed`, `demo`, `run`, `score`, `packs`, `refilter`, `add-url`, `serve`, `send`, `db copy`, `db secure`, `config push/pull` |
+| CLI | `radar/cli.py` | `init-db`, `seed`, `demo`, `run`, `rank`, `score`, `packs`, `refilter`, `add-url`, `serve`, `send`, `db copy`, `db secure`, `config push/pull` |
 | Scheduler | `scripts/schedule.sh`, `scripts/daily.sh` | macOS launchd job at 07:00 (`make schedule-install`); one run at a time, counts-only log in `logs/daily.log` |
 
 ## Pipeline steps
@@ -64,17 +65,25 @@ flowchart LR
    The `post_graduation` flag marks graduate programmes and full-time roles that start after July
    2027 or after graduation. It is not an exclusion: those postings form a separate track, shown
    in *Dopo la laurea* (API `track` parameter).
-5. **Score**: clearly off-target titles (tax, payroll, sales, legal, HR, ...) get a deterministic
-   "Bassa" without an LLM call; target roles are scored first. The LLM returns priority
+5. **Rank** (optional `embed` extra): `pipeline/rank.py` embeds each open posting that passed
+   the filters (title plus the start of the text) with a local multilingual sentence-transformers
+   model and stores `postings.similarity` (0..1) against the profile: target roles from
+   `profile.yaml` and the experience, projects and skills of `config/facts.yaml` (items with
+   `use_in_drafts: false` skipped). Vectors are cached in `data/cache/embeddings.sqlite` by
+   content hash; `similarity_version` changes with the model or the profile, which triggers a
+   recompute. Without the extra this step is skipped with one log line.
+6. **Score**: clearly off-target titles (tax, payroll, sales, legal, HR, ...) get a deterministic
+   "Bassa" without an LLM call; the rest are scored by similarity (then title relevance), at
+   most `--max-score` per run. The LLM returns priority
    Alta/Media/Bassa, why it fits, what does not, start window, language requirements and warnings.
    Scores are cached by content hash, so unchanged postings are not re-scored, and when the
    free-tier daily limit is hit the remaining postings are picked up by the next run.
-6. **Packs and drafts**: for the best postings, a cover letter (at most 250 words, opening with
+7. **Packs and drafts**: for the best postings, a cover letter (at most 250 words, opening with
    the availability line, in English or Italian), form answers and outreach drafts (connection
    note, message, follow-up) are generated with status `draft`. Writing rules are checked in code
    (no em dashes, no cliches, length limits, `[CHECK: ...]` markers) and reported as
    `style_issues`.
-7. **Report**: `runs` row with counts and LLM usage; a Markdown report in `data/reports/`, shown
+8. **Report**: `runs` row with counts and LLM usage; a Markdown report in `data/reports/`, shown
    in *Esecuzioni* (never printed to the log).
 
 ## Approval and sending

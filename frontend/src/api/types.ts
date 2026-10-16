@@ -65,6 +65,8 @@ export interface PostingSummary {
   /** Flags and rejections. */
   filter_hits: FilterHit[];
   has_pack: boolean;
+  /** Local embedding similarity to the profile (0..1), null if not ranked; older servers omit it. */
+  similarity?: number | null;
   /** Added by the backend in parallel; older servers omit it. */
   track?: PostingTrack | null;
   /** Parsed from the "[Saltato: reason]" note prefix; older servers omit it. */
@@ -243,7 +245,7 @@ export interface SettingsOut {
 
 // ---- Request bodies / query params (derived from the Routes table) ----
 
-export type PostingSort = "priority" | "deadline" | "company" | "first_seen";
+export type PostingSort = "priority" | "deadline" | "company" | "first_seen" | "similarity";
 
 export interface PostingsQuery {
   priority?: string;

@@ -38,7 +38,7 @@ Stage = Literal[
 ]
 ChangeKind = Literal["new", "changed", "closed", "reopened"]
 RunStatus = Literal["running", "ok", "partial", "failed"]
-PostingSort = Literal["priority", "deadline", "company", "first_seen"]
+PostingSort = Literal["priority", "deadline", "company", "first_seen", "similarity"]
 Track = Literal["internship", "post_graduation"]
 TrackFilter = Literal["internship", "post_graduation", "all"]
 
@@ -95,6 +95,8 @@ class PostingSummary(BaseModel):
     score: ScoreOut | None
     filter_hits: list[FilterHit]
     has_pack: bool
+    # Local embedding similarity to the profile (0..1), None if not ranked.
+    similarity: float | None = None
     # Parsed from the "[Saltato: reason]" prefix of ``note`` (see routes/skip.py).
     skip_reason: str | None = None
 

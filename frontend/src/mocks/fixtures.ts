@@ -303,6 +303,10 @@ export const postingsSeed: PostingDetail[] = seeds.map((s, i) => {
     score: s.priority && s.why ? score(s.priority, s.why, s.not ?? "", s.warnings) : null,
     filter_hits: filterHits,
     has_pack: id === 101 || id === 112,
+    similarity:
+      (s.filter_state ?? "pass") === "rejected"
+        ? null
+        : Math.round(((s.priority === "Alta" ? 0.68 : s.priority === "Media" ? 0.52 : 0.34) + (i % 5) * 0.02) * 100) / 100,
     track: /graduate|full.?time/i.test(s.type) ? "post_graduation" : "internship",
     skip_reason: (s.user_status ?? "todo") === "skipped" ? (/^\[Saltato: ([^\]]+)\]/.exec(s.note ?? "")?.[1] ?? null) : null,
     raw_text: `${s.company} cerca: ${s.title}, area ${s.area}, sede ${s.location}. ${filterHits.map((h) => h.evidence).filter(Boolean).join(". ")} Requisiti: Python, SQL, curiosità. (Annuncio fittizio di esempio.)`,

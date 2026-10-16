@@ -238,7 +238,14 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
             llm_queue.append(posting)
     if auto:
         session.commit()
-    llm_queue.sort(key=lambda p: -relevance.rank(p.title))
+    # Local embedding similarity first (pipeline/rank.py; None when not ranked, keeping the
+    # title relevance order), so the `limit` LLM calls go to the closest postings.
+    llm_queue.sort(
+        key=lambda p: (
+            -(p.similarity if p.similarity is not None else -1.0),
+            -relevance.rank(p.title),
+        )
+    )
     postings = llm_queue[:limit]
     stats: dict[str, Any] = {
         "candidates": len(postings),

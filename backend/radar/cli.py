@@ -67,6 +67,9 @@ def run(
     max_score: Annotated[int, typer.Option(help="Max postings to score this run")] = 60,
     max_packs: Annotated[int, typer.Option(help="Max application packs this run")] = 5,
     check_closed: Annotated[bool, typer.Option("--check-closed/--no-check-closed")] = True,
+    rank: Annotated[
+        bool, typer.Option("--rank/--no-rank", help="Pre-rank by local embedding similarity")
+    ] = True,
 ) -> None:
     """Run the daily pipeline: collect, dedupe, check closed, filter, diff, score, packs, report."""
     from radar.pipeline.run import PipelineOptions, run_pipeline
@@ -77,6 +80,7 @@ def run(
         max_score=max_score,
         max_packs=max_packs,
         check_closed=check_closed,
+        rank=rank,
     )
     result = run_pipeline(opts)
     console.print(result.summary_line())
@@ -93,6 +97,25 @@ def score(limit: Annotated[int, typer.Option()] = 60) -> None:
     with session_scope() as s:
         stats = score_pending(s, run_id=None, limit=limit)
     console.print(stats)
+
+
+@app.command()
+def rank(top: Annotated[int, typer.Option(help="How many top titles to print")] = 10) -> None:
+    """Compute or refresh local similarity to your profile (needs the `embed` extra)."""
+    from radar.db import session_scope
+    from radar.pipeline.rank import rank_postings, top_postings
+
+    with session_scope() as s:
+        stats = rank_postings(s)
+        if "skipped" in stats:
+            console.print(f"[yellow]Ranking skipped:[/yellow] {stats['skipped']}")
+            return
+        console.print(
+            f"Ranked {stats['ranked']} postings: {stats['embedded']} embedded, "
+            f"{stats['cached']} from cache, {stats['updated']} updated ({stats['model']})"
+        )
+        for p in top_postings(s, top):
+            console.print(f"  {p.similarity:.2f}  {p.title}")
 
 
 @app.command()

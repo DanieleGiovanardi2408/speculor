@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { PriorityBadge } from "./Badge";
+import { PriorityBadge, SimilarityBadge } from "./Badge";
 import { CopyButton } from "./CopyButton";
 import { Dialog } from "./Dialog";
 import { Tabs } from "./Tabs";
@@ -16,6 +16,18 @@ describe("PriorityBadge", () => {
   it("labels unscored postings", () => {
     render(<PriorityBadge priority={null} />);
     expect(screen.getByText("Non valutato")).toBeInTheDocument();
+  });
+});
+
+describe("SimilarityBadge", () => {
+  it("shows the value with an accessible label", () => {
+    render(<SimilarityBadge value={0.714} />);
+    expect(screen.getByText("Affinità 0,71")).toBeInTheDocument();
+    expect(screen.getByText("Affinità con il profilo: 71 su 100")).toHaveClass("sr-only");
+  });
+  it("renders nothing when not ranked", () => {
+    const { container } = render(<SimilarityBadge value={null} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });
 

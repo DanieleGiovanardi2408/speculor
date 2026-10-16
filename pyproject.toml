@@ -21,6 +21,11 @@ dependencies = [
     "pyjwt[crypto]>=2.9",
 ]
 
+[project.optional-dependencies]
+# Local pre-ranking by embedding similarity (torch + a small multilingual model, ~0.5 GB).
+# Not installed in CI; without it the pipeline keeps its previous ordering.
+embed = ["sentence-transformers>=3.0"]
+
 [project.scripts]
 radar = "radar.cli:app"
 
@@ -64,5 +69,5 @@ packages = ["radar"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["selectolax.*"]
+module = ["selectolax.*", "sentence_transformers.*"]
 ignore_missing_imports = true
