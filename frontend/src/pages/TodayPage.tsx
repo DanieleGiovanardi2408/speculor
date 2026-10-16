@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { usePostings, useToday } from "../api/hooks";
 import { Badge, PriorityBadge, type Tone } from "../components/Badge";
+import { ConnectorPauseBanner } from "../components/ConnectorPauseBanner";
 import { GoalEditor, WeeklyProgress } from "../components/GoalEditor";
 import { Icon, type IconName } from "../components/Icon";
 import { LastRunCard } from "../components/LastRunCard";
@@ -90,6 +91,9 @@ export function TodayPage() {
   return (
     <>
       <PageHeader title="Oggi" subtitle={todayLabel} />
+      <div className="mb-4 empty:hidden">
+        <ConnectorPauseBanner />
+      </div>
       {isPending ? (
         <div className="space-y-4">
           <p role="status" className="sr-only">

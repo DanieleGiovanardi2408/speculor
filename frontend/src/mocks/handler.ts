@@ -3,6 +3,7 @@ import type {
   AppStats,
   Application,
   ApplicationCreate,
+  ConnectorStatus,
   Contact,
   ContactCreate,
   Draft,
@@ -55,12 +56,18 @@ function freshDb() {
     companies: clone(companiesSeed),
     runs: clone(runsSeed),
     settings: clone(settingsSeed),
+    connectors: {} as ConnectorStatus,
     seq: 1000,
   };
 }
 /** Test helper. */
 export function resetMockDb() {
   db = freshDb();
+}
+
+/** Test/demo helper: mark a source as paused (what the pipeline does on SourcePaused). */
+export function pauseMockConnector(source: string, reason: string, action: string) {
+  db.connectors[source] = { paused: true, reason, action, since: new Date().toISOString() };
 }
 
 const ok = (body: unknown, status = 200): MockResponse => ({ status, body: clone(body) });
@@ -198,6 +205,17 @@ export async function handleMock(
   const b = (body ?? {}) as Record<string, unknown>;
   const second = seg[1] ? (/^\d+$/.test(seg[1]) ? "/:id" : `/${seg[1]}`) : "";
   const route = `${method} /${seg[0] ?? ""}${second}${seg[2] ? `/${seg[2]}` : ""}`;
+
+  if (seg[0] === "connectors") {
+    if (method === "GET" && seg[1] === "status" && seg.length === 2) return ok(db.connectors);
+    if (method === "POST" && seg[1] && seg[2] === "resume" && seg.length === 3) {
+      const source = decodeURIComponent(seg[1]);
+      if (!db.connectors[source]) return notFound();
+      delete db.connectors[source];
+      return ok(db.connectors);
+    }
+    return notFound();
+  }
 
   switch (route) {
     case "GET /health":
