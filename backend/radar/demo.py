@@ -856,7 +856,7 @@ Your focus on product analytics for retail is close to what I want to learn next
 six-month format fits my plans well. I am comfortable in English and happy to relocate to the \
 Netherlands.
 
-Thank you for considering my application.
+Happy to walk you through the evaluation code.
 
 Kind regards"""
     brina = f"""{AVAILABILITY_LINE}
