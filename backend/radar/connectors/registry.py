@@ -6,6 +6,9 @@ Structure (see ``config/companies.example.yaml``)::
     companies:
       - {name: Acme, ats: greenhouse, slug: acme, region: null, active: true, seed: false}
       - {name: Acme Corp, ats: workday, slug: "acme|wd3|Acme_Careers"}  # tenant|wdN|site
+      - {name: Acme GmbH, ats: personio, slug: acme, region: com, lang: en}   # .com host
+      - {name: Acme Spa, ats: inrecruiting, slug: "acme|acme.it|<site key>"}   # host|d|k
+      - {name: Acme Ltd, ats: workable, slug: acme, sector: fintech}
     linkedin:
       enabled: true          # optional, default true
       max_details: 5         # optional
@@ -33,11 +36,17 @@ from radar.connectors.base import Connector
 from radar.connectors.email_alerts import EmailAlertsConnector
 from radar.connectors.greenhouse import GreenhouseConnector
 from radar.connectors.http import PoliteClient
+from radar.connectors.inrecruiting import InRecruitingConnector
+from radar.connectors.inrecruiting import parse_slug as inrecruiting_feed
 from radar.connectors.jobteaser import from_settings as jobteaser_from_settings
 from radar.connectors.lever import LeverConnector
 from radar.connectors.linkedin_guest import LinkedInGuestConnector
 from radar.connectors.linkedin_jobs import LinkedInJobsConnector
+from radar.connectors.personio import PersonioConnector
+from radar.connectors.recruitee import RecruiteeConnector
 from radar.connectors.smartrecruiters import SmartRecruitersConnector
+from radar.connectors.teamtailor import TeamtailorConnector
+from radar.connectors.workable import WorkableConnector
 from radar.connectors.workday import WorkdayConnector, board_from_entry
 
 if TYPE_CHECKING:
@@ -45,7 +54,18 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-ATS_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
+ATS_SOURCES = (
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "workday",
+    "personio",
+    "workable",
+    "teamtailor",
+    "recruitee",
+    "inrecruiting",
+)
 ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email", "jobteaser", "linkedin_jobs")
 
 
@@ -81,6 +101,9 @@ def build_connectors(
             slug = board.slug
         elif ats == "workday":
             slug = None  # malformed workday entry: skipped
+        feed = inrecruiting_feed(str(slug or "")) if ats == "inrecruiting" else None
+        if ats == "inrecruiting" and feed is None:
+            slug = None  # malformed inrecruiting entry: skipped
         if ats not in ATS_SOURCES or ats not in wanted or not slug:
             continue
         name = str(entry.get("name") or slug)
@@ -111,6 +134,26 @@ def build_connectors(
                 countries=countries if isinstance(countries, str | list) else None,
                 max_details=int(entry.get("max_details", 40)),
                 label=label,
+            )
+        elif ats == "personio":
+            conn = PersonioConnector(
+                client,
+                name,
+                str(slug),
+                region=entry.get("region"),
+                lang=entry.get("lang"),
+                title_filter=tf,
+                label=label,
+            )
+        elif ats == "workable":
+            conn = WorkableConnector(client, name, str(slug), title_filter=tf, label=label)
+        elif ats == "teamtailor":
+            conn = TeamtailorConnector(client, name, str(slug), title_filter=tf, label=label)
+        elif ats == "recruitee":
+            conn = RecruiteeConnector(client, name, str(slug), title_filter=tf, label=label)
+        elif ats == "inrecruiting" and feed is not None:
+            conn = InRecruitingConnector(
+                client, name, feed, lang=entry.get("lang"), title_filter=tf, label=label
             )
         else:
             conn = SmartRecruitersConnector(client, name, str(slug), title_filter=tf, label=label)

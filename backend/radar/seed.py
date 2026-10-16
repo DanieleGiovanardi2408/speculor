@@ -149,3 +149,43 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
             session.add(linked)
         counts["applications"] += 1
     return counts
+
+
+def sync_companies_config(session: Session, cfg: dict[str, Any]) -> dict[str, int]:
+    """Store the companies config (``config/companies.yaml``) in the companies table.
+
+    Creates a Company row for each named entry that has none, and fills ``sector``, ``ats``,
+    ``ats_slug`` and ``ats_region`` only where the row has no value yet: edits made in the UI
+    are never overwritten. When a name appears more than once, the entry with a real ATS wins
+    for the ATS fields. Idempotent; returns ``{"created": n, "updated": m}``.
+    """
+    counts = {"created": 0, "updated": 0}
+    by_name = {c.name: c for c in session.exec(select(Company)).all()}
+    for entry in cfg.get("companies") or []:
+        if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+            continue
+        name = str(entry["name"]).strip()
+        ats = str(entry.get("ats") or "none").lower()
+        has_ats = ats != "none" and bool(entry.get("slug"))
+        company = by_name.get(name)
+        if company is None:
+            company = Company(name=name, active=bool(entry.get("active", True)))
+            by_name[name] = company
+            counts["created"] += 1
+            changed = True
+        else:
+            changed = False
+        if entry.get("sector") and not company.sector:
+            company.sector = str(entry["sector"])
+            changed = True
+        if has_ats and not company.ats:
+            company.ats = ats
+            company.ats_slug = str(entry["slug"])
+            company.ats_region = entry.get("region") or None
+            changed = True
+        if changed:
+            if company.id is not None:
+                counts["updated"] += 1
+            session.add(company)
+    session.flush()
+    return counts

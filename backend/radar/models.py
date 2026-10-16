@@ -47,7 +47,7 @@ class Company(SQLModel, table=True):
     why: str | None = None
     notes: str | None = Field(default=None, sa_column=Column(Text))
     priority: str | None = None
-    ats: str | None = None  # greenhouse | lever | ashby | smartrecruiters | workday
+    ats: str | None = None  # an ATS_SOURCES name (radar.connectors.registry)
     ats_slug: str | None = None
     ats_region: str | None = None  # "eu" for EU hosts (Lever, Greenhouse)
     active: bool = True

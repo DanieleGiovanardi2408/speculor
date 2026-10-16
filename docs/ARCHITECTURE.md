@@ -12,7 +12,7 @@ filters, ranks and drafts; the user decides and acts.
 flowchart LR
     LD(["launchd 07:00<br/>(user's Mac)"]) -.-> Daily
     subgraph Daily["Daily pipeline (radar run, local)"]
-        S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
+        S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
         N --> C["Closed check<br/>+ change_events (diff)"]
         C --> F["Hard filters<br/>config/rules.yaml<br/>+ post_graduation track"]
         F --> EM["Local similarity<br/>(embeddings, optional)"]
@@ -37,6 +37,7 @@ flowchart LR
 | Models / DB | `radar/models.py`, `radar/db.py` | SQLModel tables: companies, postings, change_events, runs, filter_results, scores, application_packs, contacts, drafts, applications, settings, llm_usage |
 | Connectors | `radar/connectors/` | One module per source: Greenhouse, Lever, Ashby, Workday, SmartRecruiters (disabled), LinkedIn guest (stands down on robots.txt), read-only IMAP email alerts (`email_alerts.py`, `email_parsers/`), JobTeaser through the user's own browser profile (`jobteaser.py`, Playwright, local Mac only). Shared polite HTTP client (`http.py`): per-host rate limit, disk cache, honest user agent, robots.txt checks, back-off honouring `Retry-After`. Details in [SOURCES.md](SOURCES.md) |
 | Connectors | `radar/connectors/` | One module per source: Greenhouse, Lever, Ashby, Workday, SmartRecruiters (disabled), LinkedIn guest (stands down on robots.txt), the user's saved LinkedIn searches through linkedin-cli (`linkedin_jobs.py`, once a day, at most 25 calls), read-only IMAP email alerts (`email_alerts.py`, `email_parsers/`). Shared polite HTTP client (`http.py`): per-host rate limit, disk cache, honest user agent, robots.txt checks, back-off honouring `Retry-After`. Details in [SOURCES.md](SOURCES.md) |
+| Connectors | `radar/connectors/` | One module per source: Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting, SmartRecruiters (disabled), LinkedIn guest (stands down on robots.txt), read-only IMAP email alerts (`email_alerts.py`, `email_parsers/`). Shared polite HTTP client (`http.py`): per-host rate limit, disk cache, honest user agent, robots.txt checks, back-off honouring `Retry-After`. Details in [SOURCES.md](SOURCES.md) |
 | Pipeline | `radar/pipeline/` | Normalization (company, location, country, zone), de-duplication (`dedupe_key`), closed detection, filters (incl. the `post_graduation` track), diff, manual add by URL |
 | LLM | `radar/llm/` | Provider interface (Groq, Anthropic, offline `fake`), deterministic title relevance (`relevance.py`), scoring, packs and drafts, style checks; token usage stored in `llm_usage` |
 | Contact search | `radar/llm/contacts.py` | Public profiles for Alta postings via Groq browser search (server-side tool; Radar itself fetches no page and never logs in). Results are grounded in the executed searches, slug-checked, stored as "da verificare"; estimated cost per call in `llm_usage.est_cost_eur`, monthly EUR cap and daily call cap enforced before each call |

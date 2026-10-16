@@ -60,6 +60,11 @@ export const SOURCE_LABEL: Record<string, string> = {
   seed: "Tracker",
   ashby: "Ashby",
   smartrecruiters: "SmartRecruiters",
+  personio: "Personio",
+  workable: "Workable",
+  teamtailor: "Teamtailor",
+  recruitee: "Recruitee",
+  inrecruiting: "inRecruiting",
   manual: "Aggiunto a mano",
 };
 export const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;

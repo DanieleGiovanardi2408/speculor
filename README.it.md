@@ -32,7 +32,7 @@ Tutti gli screenshot usano i dati demo inventati (`make dev`).
 ```mermaid
 flowchart LR
     LD(["launchd<br/>ogni giorno 07:00"]) -.-> S
-    S["Fonti<br/>Greenhouse · Lever · Ashby · Workday<br/>alert e-mail (IMAP) · URL a mano"] --> N["Normalizza<br/>+ deduplica"]
+    S["Fonti<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>alert e-mail (IMAP) · URL a mano"] --> N["Normalizza<br/>+ deduplica"]
     N --> F["Filtri rigidi<br/>rules.yaml<br/>+ percorso dopo la laurea"]
     F --> L["Pertinenza<br/>+ punteggio LLM"]
     L --> P["Pacchetti + bozze"]
@@ -43,7 +43,8 @@ flowchart LR
     SEND --> LI["linkedin-cli"]
 ```
 
-- **Fonti**: API pubbliche degli ATS (Greenhouse, Lever, Ashby, Workday) per una lista di
+- **Fonti**: API e feed pubblici degli ATS (Greenhouse, Lever, Ashby, Workday, Personio,
+  Workable, Teamtailor, Recruitee, inRecruiting) per una lista di
   aziende scelta dall'utente, alert e-mail di LinkedIn e JobTeaser via IMAP in sola lettura
   (opzionale), URL aggiunti a mano. Dettagli in [docs/SOURCES.md](docs/SOURCES.md).
 - **Filtri**: regole deterministiche in `config/rules.yaml` (finestra di inizio, anno di laurea,

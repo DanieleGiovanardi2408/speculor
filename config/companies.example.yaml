@@ -9,13 +9,24 @@ title_filter: [intern, internship, stage, stagiaire, tirocinio, graduate, junior
                werkstudent, working student, entry level, new grad, apprentice, analyst]
 
 companies:
-  # ats: greenhouse | lever | ashby | smartrecruiters | workday | none
+  # ats: greenhouse | lever | ashby | smartrecruiters | workday | personio | workable |
+  #      teamtailor | recruitee | inrecruiting | none
+  # sector (optional, stored on the company): fintech | vc | consulting | real_estate | ai |
+  #      banking_insurance | big_tech | ... (free text)
   # slug: the board id in the ATS URL
   #   greenhouse      job-boards(.eu).greenhouse.io/<slug>/jobs/123    -> slug
   #   lever           jobs(.eu).lever.co/<slug>/<uuid>                  -> slug (+ region: eu for .eu)
   #   ashby           jobs.ashbyhq.com/<slug>/<uuid>                    -> slug
   #   smartrecruiters jobs.smartrecruiters.com/<CompanyId>/<id>-title   -> CompanyId (case matters)
   #   workday         <tenant>.<wdN>.myworkdayjobs.com/[en-US/]<site>   -> "<tenant>|<wdN>|<site>"
+  #   personio        <slug>.jobs.personio.de/job/123                   -> slug (+ region: com for
+  #                   .jobs.personio.com; optional lang: en)
+  #   workable        apply.workable.com/<slug>/                        -> slug
+  #   teamtailor      <slug>.teamtailor.com/jobs                        -> slug (or the custom
+  #                   careers host, e.g. careers.example.com, when it serves /jobs.rss)
+  #   recruitee       <slug>.recruitee.com/o/<offer>                    -> slug
+  #   inrecruiting    the careers page embeds <host>.intervieweb.it/annunci.php?d=<d>&k=<k>
+  #                   -> "<host>|<d>|<k>" (k is the public site key; optional lang: it|en)
   # region: "eu" for EU-hosted boards (Lever: switches to api.eu.lever.co; Greenhouse: informational)
   # active: false skips the entry; seed: true means it came from the seed export
   - name: Nebula Analytics
@@ -30,6 +41,7 @@ companies:
     region: eu
     active: true
     seed: false
+    sector: fintech
   - name: Lumen Labs AI
     ats: ashby
     slug: lumenlabs
@@ -54,6 +66,42 @@ companies:
     countries: europe          # or [Italy, Netherlands]: scope via the board's country facet
     # applied_facets: {locations: [<facet id>, ...]}   # raw facets, for city-only tenants
     max_details: 40            # description requests per run
+  - name: Nordlys Ventures
+    ats: personio
+    slug: nordlys
+    region: com                # nordlys.jobs.personio.com
+    lang: en
+    active: true
+    seed: false
+    sector: vc
+  - name: Atlante Immobili
+    ats: workable
+    slug: atlante-immobili
+    region: null
+    active: true
+    seed: false
+    sector: real_estate
+  - name: Kestrel AI
+    ats: teamtailor
+    slug: kestrel              # or a custom careers host serving /jobs.rss
+    region: null
+    active: true
+    seed: false
+    sector: ai
+  - name: Polder Advisory
+    ats: recruitee
+    slug: polderadvisory
+    region: null
+    active: true
+    seed: false
+    sector: consulting
+  - name: Banca Esempio Digitale
+    ats: inrecruiting
+    slug: "bancaesempio|bancaesempio.example|publicsitekey"   # host|d|k from the careers page
+    region: null
+    active: true
+    seed: false
+    sector: banking_insurance
   - name: Banca Esempio
     ats: none                  # no supported public ATS: tracked manually / via LinkedIn
     slug: null

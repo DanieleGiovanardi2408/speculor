@@ -74,6 +74,18 @@ def seed(
     console.print(f"Imported: {counts}")
 
 
+@app.command("sync-companies")
+def sync_companies() -> None:
+    """Store config/companies.yaml entries (sector, ATS) in the companies table."""
+    from radar.config import load_yaml_config
+    from radar.db import session_scope
+    from radar.seed import sync_companies_config
+
+    with session_scope() as s:
+        counts = sync_companies_config(s, load_yaml_config("companies"))
+    console.print(f"Companies: {counts}")
+
+
 @app.command()
 def demo() -> None:
     """Load fictional demo data (for local mode and screenshots)."""

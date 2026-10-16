@@ -299,19 +299,15 @@ def test_closing_requires_all_exhaustive_sources(session: Session) -> None:
     jt = upsert_raw(session, jobteaser(), now=T0).posting
     upsert_raw(session, li_alert(), now=T0)
     assert jt.duplicate_of == gh.id
-    closed = close_missing(
+    # JobTeaser and alerts are not exhaustive (the connector never lists everything): only the
+    # board decides, so its absence closes the job even though JobTeaser showed it once.
+    assert not dedupe.is_exhaustive_source("jobteaser")
+    close_missing(
         session, source="greenhouse", companies=None, returned_uids=set(), run_id=None, now=T1
     )
     session.refresh(gh)
-    assert closed == 0 and gh.status == "open"  # JobTeaser still lists it
-    assert [e["listed"] for e in gh.sources or [] if e["source"] == "greenhouse"] == [False]
-    assert gh.url.startswith("https://www.jobteaser.com/")  # best link among listed sources
-    close_missing(
-        session, source="jobteaser", companies=None, returned_uids=set(), run_id=None, now=T1
-    )
-    session.refresh(gh)
     session.refresh(jt)
-    assert gh.status == "closed" and jt.status == "closed"
+    assert gh.status == "closed"
     # listed again on the board: the job reopens, the board link is back
     upsert_raw(session, board(), now=T2)
     session.refresh(gh)

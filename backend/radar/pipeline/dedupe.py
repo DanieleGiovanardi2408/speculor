@@ -46,16 +46,19 @@ ATS_SOURCES = frozenset(
         "smartrecruiters",
         "workday",
         "personio",
-        "recruitee",
-        "teamtailor",
         "workable",
+        "teamtailor",
+        "recruitee",
+        "inrecruiting",
         "join",
         "successfactors",
     }
 )
 LINKEDIN_SOURCES = frozenset({"linkedin", "linkedin_jobs"})
 #: Sources that never list "everything": their silence never closes a posting.
-NON_EXHAUSTIVE_SOURCES = frozenset({"linkedin", "linkedin_jobs", "email", "seed", "manual"})
+NON_EXHAUSTIVE_SOURCES = frozenset(
+    {"linkedin", "linkedin_jobs", "email", "jobteaser", "seed", "manual"}
+)
 TITLE_THRESHOLD = 0.9
 RICH_TEXT = 300  # chars: below this a description counts as a snippet
 CONTENT_CHANGED = "content changed"
