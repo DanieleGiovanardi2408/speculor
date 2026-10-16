@@ -31,7 +31,7 @@ from radar.llm.provider import (
     record_usage,
 )
 from radar.llm.relevance import Relevance
-from radar.models import Company, Posting, Score
+from radar.models import Company, FilterResult, Posting, Score
 
 log = logging.getLogger(__name__)
 
@@ -194,6 +194,18 @@ def _score_one(
         return None
 
 
+def _flags(session: Session, posting: Posting) -> list[str]:
+    """Reasons of the non-overridden filter flags, given to the LLM as facts."""
+    rows = session.exec(
+        select(FilterResult).where(
+            FilterResult.posting_id == posting.id,
+            FilterResult.action == "flag",
+            col(FilterResult.overridden).is_(False),
+        )
+    ).all()
+    return [r.reason for r in rows][:6]
+
+
 def _rules_score(posting: Posting, keyword: str) -> Score:
     assert posting.id is not None
     return Score(
@@ -258,7 +270,7 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
     for posting in postings:
         assert posting.id is not None
         company = session.get(Company, posting.company_id) if posting.company_id else None
-        user = prompts.scoring_user(profile_text, posting, company)
+        user = prompts.scoring_user(profile_text, posting, company, _flags(session, posting))
         results: list[LLMResult] = []
         try:
             out = _score_one(provider, system, user, results)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from radar.llm.style import AVAILABILITY_SENTENCE
@@ -273,7 +273,12 @@ def posting_language(posting: Posting) -> str:
 # --------------------------------------------------------------------------- posting block
 
 
-def posting_block(posting: Posting, company: Company | None, max_chars: int) -> str:
+def posting_block(
+    posting: Posting,
+    company: Company | None,
+    max_chars: int,
+    flags: Sequence[str] | None = None,
+) -> str:
     text = (posting.raw_text or "").strip()
     if len(text) > max_chars:
         text = text[:max_chars].rsplit(" ", 1)[0] + " [...]"
@@ -298,6 +303,8 @@ def posting_block(posting: Posting, company: Company | None, max_chars: int) -> 
             lines.append(f"Company program: {company.program}")
         if company.why:
             lines.append(f"Candidate's note on the company: {company.why}")
+    if flags:
+        lines.append("RADAR FLAGS: " + "; ".join(flags))
     lines.append(f"Description{source_note}:")
     lines.append(text or "(no description available)")
     return "\n".join(lines)
@@ -321,9 +328,23 @@ Rules:
   requirements. If nothing connects, write "Nessun punto di contatto forte.".
 - what_doesnt_fit: ITALIAN, at most 2 short sentences, the main concrete gap or blocker (skill,
   language, start date, seniority, location). If nothing blocks, write "Nessun ostacolo evidente.".
-- The candidate is looking for an INTERNSHIP or junior role in AI/LLM engineering, data
-  science/ML, forward deployed engineering, AI consulting, product/strategy in tech or venture
-  capital. Roles outside these areas are Bassa even if the candidate could do them.
+- The candidate wants an INTERNSHIP (or junior role) starting February 2027, flexible until
+  April 2027, in: AI/LLM engineering, data science/ML, forward deployed engineering, AI
+  consulting, product/strategy in tech, venture capital.
+- Priority rubric (apply strictly):
+  Alta = the main work is in one of those target areas (AI, ML, LLM, data science, data
+  engineering for analytics/AI, FDE, AI/data consulting, product or strategy, VC) AND the start
+  is compatible (Feb-Apr 2027, flexible, or not stated) AND no hard blocker.
+  Media = adjacent role (generic software engineering, fullstack, backend, frontend, QA,
+  BI/reporting, quant/trading, operations analytics) with a compatible start, OR a target role
+  with one real gap (missing key skill, enrollment agreement needed, unclear start).
+  Bassa = off-target area, OR start incompatible (summer internship, starts June-September
+  2027, or before 2027), OR a hard blocker (required language, visa, seniority).
+- RADAR FLAGS in the posting are facts from deterministic checks: take them into account in
+  what_doesnt_fit and warnings (e.g. a French or Spanish internship needs a university
+  agreement; "start not stated" means confirm the start date).
+- Never claim the start fits unless the posting states a compatible start. "Summer
+  internship" is never compatible.
 - start_window: start date or period as stated in the posting, else null.
 - language_requirements: languages the posting requires, e.g. ["English C1", "German"]; [] if none.
 - warnings: short Italian notes on blockers (deadline passed, must be enrolled as a student,
@@ -336,10 +357,15 @@ def scoring_system() -> str:
     return SCORING_SYSTEM
 
 
-def scoring_user(profile_text: str, posting: Posting, company: Company | None) -> str:
+def scoring_user(
+    profile_text: str,
+    posting: Posting,
+    company: Company | None,
+    flags: Sequence[str] | None = None,
+) -> str:
     return (
         f"CANDIDATE\n{profile_text}\n\n"
-        f"{posting_block(posting, company, SCORING_POSTING_CHARS)}\n\n"
+        f"{posting_block(posting, company, SCORING_POSTING_CHARS, flags)}\n\n"
         f"Today: {today().isoformat()}"
     )
 
