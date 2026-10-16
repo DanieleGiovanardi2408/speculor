@@ -81,3 +81,30 @@ def test_bad_signature_audience_and_alg(auth_client: TestClient) -> None:
     assert _get(auth_client, make_token(claims(aud="anon"))) == 401
     assert _get(auth_client, make_token(claims(), alg="none")) == 401
     assert _get(auth_client, "garbage") == 401
+
+
+def test_es256_token_verified_against_jwks(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from radar.api import deps
+
+    private = ec.generate_private_key(ec.SECP256R1())
+    other = ec.generate_private_key(ec.SECP256R1())
+
+    class FakeJWKS:
+        def get_signing_key_from_jwt(self, token: str) -> Any:
+            return type("K", (), {"key": private.public_key()})()
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(deps, "_jwks_client", lambda url: FakeJWKS())
+    good = jwt.encode(claims(), private, algorithm="ES256", headers={"kid": "k1"})
+    assert _get(auth_client, good) == 200
+    forged = jwt.encode(claims(), other, algorithm="ES256", headers={"kid": "k1"})
+    assert _get(auth_client, forged) == 401
+    wrong_user = jwt.encode(claims(email="x@example.com"), private, algorithm="ES256")
+    assert _get(auth_client, wrong_user) == 403
+    expired = jwt.encode(claims(exp=int(time.time()) - 5), private, algorithm="ES256")
+    assert _get(auth_client, expired) == 401

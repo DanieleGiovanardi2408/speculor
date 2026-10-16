@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from functools import lru_cache
 from typing import Annotated, Any
 
+import jwt
 from dotenv import dotenv_values
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import Engine
@@ -97,16 +98,55 @@ def verify_hs256(token: str, secret: str, audience: str = "authenticated") -> di
     return claims
 
 
+@lru_cache(maxsize=4)
+def _jwks_client(supabase_url: str) -> jwt.PyJWKClient:
+    url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+    return jwt.PyJWKClient(url, cache_keys=True, lifespan=3600)
+
+
+def verify_supabase_token(token: str) -> dict[str, Any]:
+    """Verify a Supabase access token.
+
+    Asymmetric signing keys (ES256/RS256, the default for new projects) are checked against
+    the project's JWKS (SUPABASE_URL); legacy HS256 tokens against SUPABASE_JWT_SECRET.
+    """
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise TokenError("malformed token") from exc
+    alg = header.get("alg")
+    if alg == "HS256":
+        secret = _env("SUPABASE_JWT_SECRET")
+        if not secret:
+            raise TokenError("HS256 token but SUPABASE_JWT_SECRET is not set")
+        return verify_hs256(token, secret)
+    if alg not in {"ES256", "RS256", "EdDSA"}:
+        raise TokenError(f"unsupported alg {alg}")
+    supabase_url = _env("SUPABASE_URL")
+    if not supabase_url:
+        raise TokenError("asymmetric token but SUPABASE_URL is not set")
+    try:
+        key = _jwks_client(supabase_url).get_signing_key_from_jwt(token)
+        claims: dict[str, Any] = jwt.decode(
+            token, key.key, algorithms=[alg], audience="authenticated"
+        )
+    except jwt.ExpiredSignatureError as exc:
+        raise TokenError("expired") from exc
+    except jwt.PyJWTError as exc:
+        raise TokenError("bad signature or claims") from exc
+    return claims
+
+
 def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
     """No-op unless RADAR_AUTH_REQUIRED=true; then require a Supabase JWT for the allowed email."""
     if not auth_required():
         return
-    secret = _env("SUPABASE_JWT_SECRET")
     allowed = (_env("RADAR_ALLOWED_EMAIL") or "").strip().lower()
-    if not secret or not allowed:
+    if not allowed or not (_env("SUPABASE_URL") or _env("SUPABASE_JWT_SECRET")):
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "Auth is required but SUPABASE_JWT_SECRET / RADAR_ALLOWED_EMAIL are not set",
+            "Auth is required but SUPABASE_URL (or SUPABASE_JWT_SECRET) / "
+            "RADAR_ALLOWED_EMAIL are not set",
         )
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
@@ -116,7 +156,7 @@ def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         )
     token = authorization.split(" ", 1)[1].strip()
     try:
-        claims = verify_hs256(token, secret)
+        claims = verify_supabase_token(token)
     except TokenError as exc:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
