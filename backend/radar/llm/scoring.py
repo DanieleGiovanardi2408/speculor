@@ -140,7 +140,8 @@ def parse_score(text: str) -> ScoreOut:
 
 
 def pending_postings(session: Session, limit: int) -> list[Posting]:
-    """Open, non-rejected, non-duplicate postings whose content was never scored."""
+    """Open, non-rejected, non-duplicate postings whose content was never scored, best
+    embedding similarity first (across the whole backlog, not only today's)."""
     already_scored = exists().where(col(Score.content_hash) == col(Posting.content_hash))
     stmt = (
         select(Posting)
@@ -152,6 +153,9 @@ def pending_postings(session: Session, limit: int) -> list[Posting]:
             ~already_scored,
         )
         .order_by(
+            # embedding pre-ranking first (NULL = not ranked yet, after ranked ones)
+            col(Posting.similarity).is_(None),
+            col(Posting.similarity).desc(),
             func.date(col(Posting.first_seen)).desc(),
             col(Posting.deadline).is_(None),
             col(Posting.deadline).asc(),
