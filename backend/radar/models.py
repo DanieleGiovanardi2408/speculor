@@ -81,6 +81,11 @@ class Posting(SQLModel, table=True):
     content_hash: str = ""
     dedupe_key: str = Field(default="", index=True)
     duplicate_of: int | None = Field(default=None, foreign_key="postings.id")
+    # Primary rows only: every source that lists this job, [{uid, source, url, via, external_id,
+    # first_seen, last_seen, listed}] (see pipeline/dedupe.py); NULL on duplicates.
+    sources: list[dict[str, Any]] | None = _json_col()
+    # uid of the member row whose (richer) description raw_text shows; NULL = its own.
+    description_from: str | None = None
     first_seen: datetime = Field(default_factory=utcnow)
     last_seen: datetime = Field(default_factory=utcnow)
     status: str = Field(default="open", index=True)

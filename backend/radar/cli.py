@@ -21,6 +21,8 @@ app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 connectors_app = typer.Typer(no_args_is_help=True, help="Connector pause state.")
 app.add_typer(connectors_app, name="connectors")
+dedupe_app = typer.Typer(no_args_is_help=True, help="Cross-source de-duplication.")
+app.add_typer(dedupe_app, name="dedupe")
 console = Console()
 
 
@@ -178,6 +180,27 @@ def connectors_resume(source: str) -> None:
     with session_scope() as s:
         ok = resume(s, source)
     console.print("Ripresa." if ok else "Fonte non in pausa.")
+
+
+@dedupe_app.command("backfill")
+def dedupe_backfill(
+    apply: Annotated[
+        bool, typer.Option("--apply/--dry-run", help="Write the changes (default: dry run)")
+    ] = False,
+) -> None:
+    """Merge existing duplicates with the current matching. Dry run by default; counts only.
+
+    Idempotent; never deletes rows; postings with packs, drafts or applications keep their id."""
+    from sqlmodel import Session
+
+    from radar.db import init_db
+    from radar.pipeline.dedupe import backfill
+
+    with Session(init_db()) as s:
+        counts = backfill(s, apply=apply)
+    console.print(("Applied" if apply else "Dry run (nothing written)") + ":")
+    for key, value in counts.items():
+        console.print(f"  {key}: {value}")
 
 
 @db_app.command("copy")

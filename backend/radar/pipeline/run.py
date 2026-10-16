@@ -172,9 +172,10 @@ def _collect(
                 pid = outcome.posting.id
                 assert pid is not None
                 uids.add(outcome.posting.uid)
-                seen.add(pid)
+                primary_id = outcome.primary_id or pid
+                seen.update((pid, primary_id))
                 if outcome.kind != "unchanged":
-                    touched.add(pid)
+                    touched.update((pid, primary_id))
                 if outcome.kind == "new" and not outcome.is_duplicate:
                     src["new"] += 1
             if is_exhaustive(conn):

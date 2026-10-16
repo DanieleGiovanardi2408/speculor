@@ -26,6 +26,7 @@ from radar.models import (
     Run,
     Score,
 )
+from radar.pipeline.dedupe import make_entry, put_entries
 from radar.pipeline.normalize import canonical_url, content_hash, dedupe_key, zone_for
 from radar.timeutil import utcnow
 
@@ -1139,6 +1140,8 @@ def load_demo(session: Session) -> dict[str, int]:
         last_seen=original.last_seen,
     )
     session.add(dup)
+    put_entries(original, [make_entry(original), make_entry(dup)])
+    session.add(original)
     bump("postings")
 
     # --- other change events -----------------------------------------------------------

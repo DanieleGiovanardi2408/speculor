@@ -4,22 +4,25 @@
 * Existing posting: ``last_seen`` is bumped; changes to title/location/deadline/raw_text produce a
   ``changed`` event (raw_text changes are recorded as "content changed", never the text); a
   closed posting that is seen again is ``reopened``.
-* New posting: ``new`` event. If the same canonical URL (any source) or the same dedupe key
-  (other source) already exists, the group's primary is chosen (seed > ATS > manual >
-  linkedin, then earliest) and the others get ``duplicate_of`` = primary. Duplicates are kept
-  but excluded from new-counts, the report and scoring.
+* New posting: ``new`` event, then cross-source de-duplication (pipeline/dedupe.py): if it is
+  the same job as an existing group (same canonical URL, or same company/country/city with a
+  near-identical title from another source family) it gets ``duplicate_of`` = the group's
+  primary, which keeps its id and gains the source (better link, richer description).
+  Duplicates are kept but excluded from new-counts, the report and scoring.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
-from sqlmodel import Session, col, or_, select
+from sqlmodel import Session, select
 
 from radar.models import ChangeEvent, Company, Posting
+from radar.pipeline import dedupe
+from radar.pipeline.dedupe import ATS_SOURCES, CONTENT_CHANGED, source_rank
 from radar.pipeline.normalize import (
     canonical_url,
     content_hash,
@@ -31,8 +34,7 @@ from radar.pipeline.normalize import (
 from radar.schemas import RawPosting
 from radar.timeutil import utcnow
 
-ATS_SOURCES = frozenset({"greenhouse", "lever", "ashby", "smartrecruiters", "workday"})
-CONTENT_CHANGED = "content changed"
+__all__ = ["ATS_SOURCES", "CONTENT_CHANGED", "UpsertOutcome", "source_rank", "upsert_raw"]
 
 _INTERN_RE = re.compile(
     r"\b(intern\w*|stage|stagiaire|tirocini\w*|praktikum|praktikant\w*|pr[áa]cticas|"
@@ -52,21 +54,10 @@ class UpsertOutcome:
     def is_duplicate(self) -> bool:
         return self.posting.duplicate_of is not None
 
-
-def source_rank(source: str) -> int:
-    if source == "seed":
-        return 0
-    if source in ATS_SOURCES:
-        return 1
-    if source == "manual":
-        return 2
-    if source == "linkedin":
-        return 4
-    return 3
-
-
-def _aware(dt: datetime) -> datetime:
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+    @property
+    def primary_id(self) -> int | None:
+        """The id shown in the app for this job (the group's primary)."""
+        return self.posting.duplicate_of or self.posting.id
 
 
 def infer_type(title: str, employment_type: str | None = None) -> str:
@@ -117,43 +108,7 @@ def upsert_raw(
     existing = session.exec(select(Posting).where(Posting.uid == uid)).first()
 
     if existing is not None:
-        changes: dict[str, list[Any]] = {}
-        if existing.title != title:
-            changes["title"] = [existing.title, title]
-            existing.title = title
-        if (existing.location or None) != (raw.location or None):
-            changes["location"] = [existing.location, raw.location]
-            existing.location = raw.location
-            existing.country = raw.country or existing.country
-            existing.country_code = code
-            existing.zone = zone_for(code)
-        if raw.deadline is not None and existing.deadline != raw.deadline:
-            changes["deadline"] = [
-                existing.deadline.isoformat() if existing.deadline else None,
-                raw.deadline.isoformat(),
-            ]
-            existing.deadline = raw.deadline
-        if (existing.raw_text or "") != raw_text:
-            changes["raw_text"] = [None, CONTENT_CHANGED]
-            existing.raw_text = raw_text
-        existing.content_hash = chash
-        existing.last_seen = now
-        if raw.url and existing.url != raw.url:
-            existing.url = raw.url
-        kind = "unchanged"
-        if existing.status == "closed":
-            existing.status = "open"
-            existing.closed_at = None
-            kind = "reopened"
-        session.add(existing)
-        session.flush()
-        if kind == "reopened":
-            _event(session, existing, "reopened", run_id, now)
-        if changes:
-            _event(session, existing, "changed", run_id, now, changes)
-            if kind == "unchanged":
-                kind = "changed"
-        return UpsertOutcome(existing, kind, changes)
+        return _update_existing(session, existing, raw, title, code, chash, run_id, now)
 
     if companies is None:
         companies = company_index(session)
@@ -188,62 +143,110 @@ def upsert_raw(
     session.add(posting)
     session.flush()
     _event(session, posting, "new", run_id, now)
-    _dedupe(session, posting, run_id, now)
+    dedupe.link_new(session, posting, run_id, now, via=_alert_via(raw))
     return UpsertOutcome(posting, "new")
 
 
-def _valid_key(key: str) -> bool:
-    parts = key.split("|")
-    return len(parts) >= 2 and bool(parts[0]) and bool(parts[1])
-
-
-def _dedupe(session: Session, posting: Posting, run_id: int | None, now: datetime) -> None:
-    conds = [col(Posting.canonical_url) == posting.canonical_url]
-    if _valid_key(posting.dedupe_key):
-        conds.append(
-            (col(Posting.dedupe_key) == posting.dedupe_key)
-            & (col(Posting.source) != posting.source)
-        )
-    matches = session.exec(
-        select(Posting).where(col(Posting.id) != posting.id).where(or_(*conds))
-    ).all()
-    if not matches:
-        return
-    primaries: dict[int, Posting] = {}
-    for m in matches:
-        root = m
-        if m.duplicate_of is not None:
-            parent = session.get(Posting, m.duplicate_of)
-            if parent is not None:
-                root = parent
-        assert root.id is not None
-        primaries[root.id] = root
-    group = [*primaries.values(), posting]
-    best = min(group, key=lambda p: (source_rank(p.source), _aware(p.first_seen), p.id or 0))
-    assert best.id is not None
-    for other in group:
-        if other.id == best.id:
-            continue
-        other.duplicate_of = best.id
-        session.add(other)
-        for child in session.exec(select(Posting).where(Posting.duplicate_of == other.id)).all():
-            child.duplicate_of = best.id
-            session.add(child)
-    if best.id != posting.id and best.status == "closed" and posting.status == "open":
-        best.status = "open"
-        best.closed_at = None
-        best.last_seen = now
-        session.add(best)
-        session.flush()
-        _event(session, best, "reopened", run_id, now)
+def _update_existing(
+    session: Session,
+    existing: Posting,
+    raw: RawPosting,
+    title: str,
+    code: str | None,
+    chash: str,
+    run_id: int | None,
+    now: datetime,
+) -> UpsertOutcome:
+    raw_text = raw.raw_text or ""
+    primary = existing if existing.duplicate_of is None else dedupe.root_of(session, existing)
+    grouped = primary.id != existing.id or len(primary.sources or []) > 1
+    # A primary showing a richer member's description: its own (shorter) text is not compared.
+    borrowed = existing.duplicate_of is None and existing.description_from not in (
+        None,
+        existing.uid,
+    )
+    changes: dict[str, list[Any]] = {}
+    if existing.title != title:
+        changes["title"] = [existing.title, title]
+        existing.title = title
+    if (existing.location or None) != (raw.location or None):
+        changes["location"] = [existing.location, raw.location]
+        existing.location = raw.location
+        existing.country = raw.country or existing.country
+        existing.country_code = code
+        existing.zone = zone_for(code)
+    if raw.deadline is not None and existing.deadline != raw.deadline:
+        changes["deadline"] = [
+            existing.deadline.isoformat() if existing.deadline else None,
+            raw.deadline.isoformat(),
+        ]
+        existing.deadline = raw.deadline
+    if not borrowed:
+        if (existing.raw_text or "") != raw_text:
+            changes["raw_text"] = [None, CONTENT_CHANGED]
+            existing.raw_text = raw_text
+        existing.content_hash = chash
+    existing.last_seen = now
+    if raw.url and existing.url != raw.url and not grouped:
+        existing.url = raw.url
+    kind = "unchanged"
+    # A non-exhaustive source (LinkedIn search, alerts) still showing a job that every board
+    # stopped listing does not reopen it: the boards decide.
+    board_closed = (
+        grouped
+        and not dedupe.is_exhaustive_source(existing.source)
+        and dedupe.all_exhaustive_gone(primary)
+    )
+    if existing.status == "closed" and not board_closed:
+        existing.status = "open"
+        existing.closed_at = None
+        kind = "reopened"
+    session.add(existing)
     session.flush()
+    if kind == "reopened":
+        _event(session, existing, "reopened", run_id, now)
+    if changes:
+        _event(session, existing, "changed", run_id, now, changes)
+        if kind == "unchanged":
+            kind = "changed"
+    _refresh_group(session, primary, existing, raw, kind, run_id, now)
+    return UpsertOutcome(existing, kind, changes)
+
+
+def _refresh_group(
+    session: Session,
+    primary: Posting,
+    member: Posting,
+    raw: RawPosting,
+    kind: str,
+    run_id: int | None,
+    now: datetime,
+) -> None:
+    """Keep the primary's source entry for ``member`` current (seen now, still listed)."""
+    dedupe.ensure_entries(session, primary)
+    fields: dict[str, Any] = {"last_seen": now.isoformat(), "listed": True}
+    if raw.url:
+        fields["url"] = raw.url
+    dedupe.update_entry(primary, member.uid, **fields)
+    session.add(primary)
+    if primary.id == member.id and len(primary.sources or []) <= 1:
+        return
+    dedupe.sync_primary(session, primary, run_id, now)
+    if primary.id != member.id and kind == "reopened" and primary.status == "closed":
+        dedupe.reopen(session, primary, run_id, now)
+    session.flush()
+
+
+def _alert_via(raw: RawPosting) -> str | None:
+    via = raw.extra.get("via")
+    return via if isinstance(via, str) and via else None
 
 
 def _via(raw: RawPosting) -> str:
     """Default application channel shown in the UI."""
     alert = raw.extra.get("via")
-    if raw.source == "linkedin" or alert == "linkedin_alert":
+    if raw.source in dedupe.LINKEDIN_SOURCES or alert == "linkedin_alert":
         return "LinkedIn"
-    if alert == "jobteaser_alert":
+    if raw.source == "jobteaser" or alert == "jobteaser_alert":
         return "Career Service Luiss"
     return "Sito aziendale"

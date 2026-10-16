@@ -49,10 +49,20 @@ flowchart LR
    `config/companies.yaml` (by ATS slug or Workday board), plus the optional email alerts (only
    LinkedIn and JobTeaser senders, read-only). A failing source is recorded in the run stats and
    skipped; the run continues (`partial`).
-2. **Normalize and dedupe**: canonical URL, `uid = <source>:<external_id>`, content hash, and a
-   cross-source `dedupe_key` (normalized company + normalized title + country); duplicates point to the
-   original via `duplicate_of`. Alert postings dedupe against the other sources by canonical
-   URL.
+2. **Normalize and dedupe** (`pipeline/dedupe.py`): `uid = <source>:<external_id>`, content
+   hash, a canonical URL key (tracking params, locales, `www.`, trailing slashes dropped; LinkedIn
+   `/comm/jobs/view/<id>` and `?currentJobId=` links, JobTeaser offers on any career-center
+   host, Greenhouse `gh_jid` pages collapse to one key per job) and a fuzzy key (company without
+   legal suffixes/accents, title without gender markers, durations, seasons and places, country).
+   The same job from the board, JobTeaser, LinkedIn and email alerts is ONE posting: every source
+   keeps its own row, the others point at the primary via `duplicate_of`, and the primary lists
+   all of them in `sources` (`{uid, source, url, via, external_id, first_seen, last_seen,
+   listed}`). Fuzzy matches need the same company and country, compatible cities, title
+   similarity >= 0.9 and different source families. The primary keeps its id when a better source
+   arrives later (stable ids for packs, drafts, applications) but takes the best direct link
+   (board > JobTeaser > LinkedIn > email) and a richer description. A job closes only when all
+   its exhaustive sources (boards) stopped listing it. `radar dedupe backfill [--apply]` re-keys
+   and merges an existing database (dry run by default, counts only, idempotent).
 3. **Diff**: compare with the previous state and write `change_events` (`new`, `changed` with a
    field-level diff, `closed`, `reopened`). This powers the "since yesterday" view. Sources that
    list only some postings (email alerts) never close a posting by its absence.

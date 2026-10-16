@@ -8,6 +8,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Cross-source de-duplication: the same job seen on the company board, JobTeaser, LinkedIn and
+  email alerts is one posting with all its sources (`Posting.sources`), stricter canonical URLs,
+  a fuzzy company/title/city match, stable primary ids, best-link and richer-description
+  selection, closing only when every board stopped listing it, `radar dedupe backfill`
+  (dry run by default), `sources` in the postings API and source chips/links in the web app.
 - Daily pipeline: collection from Greenhouse, Lever, Ashby and Workday (public CXS endpoint, best
   effort, robots.txt checked); optional read-only IMAP email alerts (one Gmail label, LinkedIn and
   JobTeaser senders only); manual add by URL; normalization and de-duplication; closed-posting

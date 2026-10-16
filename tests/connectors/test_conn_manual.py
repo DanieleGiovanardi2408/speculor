@@ -38,7 +38,7 @@ def test_manual_add_with_jsonld(
     assert p.country_code == "IT" and p.zone == "Italia"
     assert p.deadline is not None and p.deadline.isoformat() == "2026-11-30"
     assert p.raw_text is not None and "- SQL" in p.raw_text
-    assert p.content_hash and p.dedupe_key.startswith("fiordo payments|junior data analyst")
+    assert p.content_hash and p.dedupe_key.startswith("fiordopayments|junior data analyst")
     assert p.status == "open"
 
     again = add_posting_from_url(session, PAGE, client=client)  # same canonical URL

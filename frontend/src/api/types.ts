@@ -40,6 +40,17 @@ export interface ScoreOut {
   created_at: string;
 }
 
+/** One place where a de-duplicated job is listed (best link first). */
+export interface PostingSource {
+  source: string;
+  url: string;
+  via: string | null;
+  /** "Sito aziendale" | "JobTeaser" | "LinkedIn" | "Email alert" */
+  label: string;
+  /** False once that source stopped listing the job. */
+  listed: boolean;
+}
+
 export interface PostingSummary {
   id: number;
   source: string;
@@ -69,6 +80,8 @@ export interface PostingSummary {
   track?: PostingTrack | null;
   /** Parsed from the "[Saltato: reason]" note prefix; older servers omit it. */
   skip_reason?: string | null;
+  /** Every source listing this job (cross-source de-duplication); older servers omit it. */
+  sources?: PostingSource[];
 }
 
 export interface ChangeEventOut {
