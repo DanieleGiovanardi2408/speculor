@@ -14,10 +14,15 @@ Structure (see ``config/companies.example.yaml``)::
     email:                   # optional; the "email" source needs RADAR_IMAP_* env vars
       enabled: true          # optional, default true
       # Only LinkedIn and JobTeaser alert senders are ever processed (no generic senders).
+
+The "linkedin_jobs" source is configured separately in ``config/linkedin_searches.yaml``
+(private, see the ``.example``) and is built only when that file and the linkedin-cli binary
+(``RADAR_LINKEDIN_BIN``) both exist.
 """
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
@@ -28,14 +33,17 @@ from radar.connectors.greenhouse import GreenhouseConnector
 from radar.connectors.http import PoliteClient
 from radar.connectors.lever import LeverConnector
 from radar.connectors.linkedin_guest import LinkedInGuestConnector
+from radar.connectors.linkedin_jobs import LinkedInJobsConnector
 from radar.connectors.smartrecruiters import SmartRecruitersConnector
 from radar.connectors.workday import WorkdayConnector, board_from_entry
 
 if TYPE_CHECKING:
     from radar.config import Settings
 
+log = logging.getLogger(__name__)
+
 ATS_SOURCES = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday")
-ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email")
+ALL_SOURCES = (*ATS_SOURCES, "linkedin", "email", "linkedin_jobs")
 
 
 def _title_filter(value: Any) -> list[str] | None:
@@ -53,7 +61,8 @@ def build_connectors(
     settings: Settings | None = None,
 ) -> list[Connector]:
     """One connector per active company with a supported ATS, plus one LinkedIn connector,
-    plus the email-alerts connector when the RADAR_IMAP_* settings are set."""
+    plus the email-alerts connector when the RADAR_IMAP_* settings are set, plus the
+    linkedin_jobs connector when its searches file and the linkedin-cli binary exist."""
     wanted = set(sources) if sources else set(ALL_SOURCES)
     global_filter = _title_filter(companies_cfg.get("title_filter"))
     counters: Counter[str] = Counter()
@@ -125,4 +134,17 @@ def build_connectors(
         email_conn = EmailAlertsConnector.from_settings(settings)
         if email_conn is not None:
             out.append(email_conn)
+
+    if "linkedin_jobs" in wanted:
+        if settings is None:
+            from radar.config import get_settings
+
+            settings = get_settings()
+        try:
+            jobs_conn = LinkedInJobsConnector.from_settings(settings)
+        except (OSError, ValueError) as exc:  # a bad searches file never breaks the other sources
+            log.warning("linkedin_jobs: config not usable (%s)", type(exc).__name__)
+            jobs_conn = None
+        if jobs_conn is not None:
+            out.append(jobs_conn)
     return out

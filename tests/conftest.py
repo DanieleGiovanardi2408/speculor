@@ -20,3 +20,15 @@ def engine(tmp_path) -> Engine:  # type: ignore[no-untyped-def]
 def session(engine: Engine) -> Iterator[Session]:
     with Session(engine) as s:
         yield s
+
+
+@pytest.fixture(autouse=True)
+def _no_real_linkedin_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> Iterator[None]:  # type: ignore[no-untyped-def]
+    """The developer's machine may have config/linkedin_searches.yaml and a real `linkedin`
+    binary: tests must never pick them up (or call LinkedIn). Tests opt in explicitly."""
+    from radar.config import get_settings
+
+    monkeypatch.setenv("RADAR_LINKEDIN_BIN", str(tmp_path_factory.mktemp("nobin") / "linkedin"))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

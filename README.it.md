@@ -117,8 +117,11 @@ Dettagli in [docs/RUNNING.md](docs/RUNNING.md).
   l'API di SmartRecruiters vieta gli agenti generici, quindi quel connettore è disattivato.
 - **Nessuno scraping con login**, nessuna elusione di CAPTCHA o anti-bot, nessun cookie tranne la
   sessione linkedin-cli dell'utente sul suo Mac. I Termini di LinkedIn limitano l'accesso
-  automatico: Radar non fa scraping di LinkedIn; l'invio con linkedin-cli è locale, confermato
-  messaggio per messaggio e sotto la responsabilità dell'utente.
+  automatico: Radar non fa crawling di LinkedIn. Facoltativo (spento finché non esiste
+  `config/linkedin_searches.yaml`): le ricerche salvate dell'utente passano da linkedin-cli una
+  volta al giorno, una chiamata alla volta, al massimo 25, senza mai ritentare dopo checkpoint,
+  captcha, 429 o 999 (la fonte va in pausa e *Oggi* mostra cosa fare). L'invio con linkedin-cli
+  è locale, confermato messaggio per messaggio. Entrambi sotto la responsabilità dell'utente.
 - **IMAP**: legge solo un'etichetta Gmail (`radar`, impostata con `RADAR_IMAP_FOLDER`) in sola lettura (`EXAMINE`,
   `BODY.PEEK`): niente viene segnato come letto, spostato, cancellato o contrassegnato. Solo gli
   alert di LinkedIn e JobTeaser vengono letti; il resto è ignorato e non arriva mai all'LLM. Il

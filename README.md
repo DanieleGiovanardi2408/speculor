@@ -129,7 +129,7 @@ Local only (`make dev-real`), in Italian:
 
 | Page | What it is for |
 |---|---|
-| *Oggi* | Today's action list: deadlines in the next 7 days, new Alta postings, packs to review, follow-ups, drafts, weekly goal; last run card with LLM usage |
+| *Oggi* | Today's action list: deadlines in the next 7 days, new Alta postings, packs to review, follow-ups, drafts, weekly goal; last run card with LLM usage; a banner for paused sources with what to do and *Riprendi* |
 | *Annunci* | Postings in three tabs: *Stage* \| *Dopo la laurea* \| *Scartati*. Keyboard: `j`/`k` move, `Enter` open details, `p` pack, `s` mark as sent, `x` skip with a reason, `r` restore, `/` search, `?` help (plus `g o` / `g a` / `g p` to jump between pages) |
 | *Pacchetto* | Application pack: cover letter, form answers, contacts and drafts, all editable |
 | *Approvazioni* | Approve or skip outreach drafts |
@@ -171,11 +171,15 @@ Radar is a personal tool that reads a small amount of public data, politely:
   [docs/SOURCES.md](docs/SOURCES.md).
 - **No logged-in scraping**, no CAPTCHA solving, no proxy rotation or fingerprint evasion. No
   cookies anywhere, except the user's own linkedin-cli session on the user's Mac. When a source
-  blocks Radar, the run records the failure and moves on.
-- **LinkedIn**: LinkedIn's User Agreement restricts automated access. Radar does not scrape
-  LinkedIn; LinkedIn postings arrive through LinkedIn's own alert emails or *Aggiungi da URL*.
-  Sending through linkedin-cli uses the user's own session, runs only locally and only after an
-  explicit confirmation of each message; it is the user's own responsibility.
+  blocks Radar, the run records the failure and moves on; a source that needs the user (LinkedIn
+  checkpoint, expired session) is paused and shown on *Oggi* until the user resumes it.
+- **LinkedIn**: LinkedIn's User Agreement restricts automated access. Radar does not crawl
+  LinkedIn; postings arrive through LinkedIn's own alert emails, *Aggiungi da URL*, and
+  (optional, off unless `config/linkedin_searches.yaml` exists) the user's own saved job
+  searches run through linkedin-cli: once a day, one call at a time, at most 25 calls, never
+  retried after a checkpoint, captcha, 429 or 999. Sending through linkedin-cli uses the user's
+  own session, runs only locally and only after an explicit confirmation of each message. Both
+  are the user's own responsibility.
 - **Email alerts (IMAP)**: optional. Radar reads only one Gmail label (`radar`, set with `RADAR_IMAP_FOLDER`), opens
   it read-only (`EXAMINE`) and fetches with `BODY.PEEK`, so nothing is marked as read, moved,
   deleted or flagged. Only LinkedIn and JobTeaser alert senders are parsed; every other message

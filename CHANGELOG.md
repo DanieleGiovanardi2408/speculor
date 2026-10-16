@@ -31,6 +31,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `schedule-status`, `schedule-run-now`, `schedule-remove`), one run at a time, counts-only log.
 - Optional Postgres support: `radar db copy`, `radar db secure` (row level security), transaction
   pooler handling, optional Supabase JWT auth for the API.
+- Optional `linkedin_jobs` source: the user's saved LinkedIn job searches
+  (`config/linkedin_searches.yaml`, gitignored) through linkedin-cli >= 0.3, once a day,
+  sequential, at most 25 calls with a rotation across searches and locations; never closes by
+  absence; pauses on checkpoint/captcha/429/999 or an expired session.
+- *Oggi*: banner listing paused sources (reason, what to do, *Riprendi*).
 - Makefile, local demo mode without API keys, CI (backend, frontend, gitleaks).
 - Pre-commit hooks: gitleaks, ruff, hygiene checks and a personal-data guard.
 

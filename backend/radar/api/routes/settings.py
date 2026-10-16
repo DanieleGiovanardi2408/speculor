@@ -33,8 +33,16 @@ def weekly_goal(session: Session) -> int:
         return DEFAULT_WEEKLY_GOAL
 
 
+def default_sources() -> tuple[str, ...]:
+    """DEFAULT_SOURCES, plus "linkedin_jobs" when its searches file and the CLI binary exist."""
+    from radar.config import get_settings
+    from radar.connectors.linkedin_jobs import available
+
+    return (*DEFAULT_SOURCES, "linkedin_jobs") if available(get_settings()) else DEFAULT_SOURCES
+
+
 def sources_enabled(session: Session) -> dict[str, bool]:
-    out = dict.fromkeys(DEFAULT_SOURCES, True)
+    out = dict.fromkeys(default_sources(), True)
     stored: Any = get_setting("sources_enabled", None, session=session)
     if isinstance(stored, dict):
         out.update({str(k): bool(v) for k, v in stored.items()})
