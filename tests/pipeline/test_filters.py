@@ -322,7 +322,8 @@ FRENCH = (
 def test_posting_in_french_flagged(rules: Rules) -> None:
     hits = hits_for(rules, raw_text=FRENCH, location="Paris")
     hit = next(h for h in hits if h.rule_id == "posting_language")
-    assert hit.action == "flag" and "French" in hit.reason
+    assert hit.action == "flag" and hit.reason == "lingua probabilmente richiesta: francese"
+    assert hit.evidence and "francese 100%" in hit.evidence
     assert "language_required" not in ids(hits)
 
 

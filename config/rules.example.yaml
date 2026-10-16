@@ -230,10 +230,14 @@ languages:
   allowed: [english, inglese, anglais, englisch, inglés, ingles, engels, italian, italiano,
             italien, italienisch, italiano]
   names:
-    French: [french, francese, français, francais, französisch, franzosisch, francés, frances, frans]
-    German: [german, tedesco, deutsch, allemand, alemán, aleman, duits]
-    Spanish: [spanish, spagnolo, español, espanol, castellano, espagnol, spanisch, spaans]
-    Dutch: [dutch, olandese, nederlands, néerlandais, neerlandais, niederländisch, neerlandés, flemish, fiammingo]
+    French: [french, francese, français, francais, französisch, franzosisch, francés, frances, frans,
+             französischkenntnisse, francophone]
+    German: [german, tedesco, deutsch, allemand, alemán, aleman, duits, deutschkenntnisse,
+             germanophone, deutschsprachig, deutschsprachige, deutschsprachigen]
+    Spanish: [spanish, spagnolo, español, espanol, castellano, espagnol, spanisch, spaans,
+              spanischkenntnisse, hispanophone, hispanohablante]
+    Dutch: [dutch, olandese, nederlands, néerlandais, neerlandais, niederländisch, neerlandés, flemish, fiammingo,
+           néerlandophone, nederlandstalig, nederlandstalige]
     Portuguese: [portuguese, portoghese, português, portugues, portugais, portugiesisch, portugués]
     Polish: [polish, polacco, polski, polonais, polnisch]
     Swedish: [swedish, svedese, svenska, suédois, schwedisch, sueco]
@@ -263,6 +267,12 @@ languages:
     - '\b{lang}(?:\s+(?:or|o|and|e)\s+{lang})?[- ]speakers?\b'
     - '\b(?:parfaite\s+|excellente\s+|bonne\s+)?ma[îi]trise\s+(?:du\s+|de\s+l''|de\s+la\s+langue\s+)?{lang}'
     - '\b(?:sehr\s+gute|fließende|fliessende|verhandlungssichere|exzellente|ausgezeichnete)\s+(?:\w+-?\s+(?:und)\s+)?{lang}'
+    - '\b(?:flie(?:ß|ss)end|verhandlungssicher|muttersprachlich)e?[nrs]?\s+(?:in\s+)?(?:\w+-?\s+(?:und)\s+)?{lang}'
+    - '\b(?:vloeiend|uitstekend|perfect)e?\s+(?:\w+\s+){0,2}?{lang}'
+    - '\b(?:goede\s+|uitstekende\s+)?beheersing\s+van\s+(?:de\s+|het\s+)?(?:\w+\s+(?:en)\s+)?{lang}'
+    - '\b(?:imprescindible|necesario|obligatorio)\s+(?:un\s+)?(?:\w+\s+){0,3}?(?:de\s+|del\s+)?{lang}'
+    - '\b(?:vous\s+(?:êtes|etes)|you\s+are|être|sei|bist|ben\s+je|je\s+bent)\s+(?:parfaitement\s+|fully\s+|vollständig\s+)?(?:francophone|germanophone|hispanophone|n[ée]erlandophone|deutschsprachig\w*|nederlandstalig\w*|hispanohablante)\b'
+    - '\b(?:francophone|germanophone|hispanophone|n[ée]erlandophone|deutschsprachig\w*|nederlandstalig\w*|hispanohablante)\s+(?:obligatoire|exig[ée]e?|requis\w*|required|indispensable|vorausgesetzt|vereist|imprescindible)\b'
     - '\b(?:dominio|nivel\s+(?:alto|avanzado|nativo))\s+(?:de\s+|del\s+)?{lang}'
   # Same sentence: downgrade to a flag (nice-to-have or hedged).
   soft:
@@ -275,23 +285,24 @@ languages:
   alternatives_before:
     - '\b(?:english|inglese|anglais|englisch|ingl[ée]s|engels|italian|italiano)\s*(?:or|o|ou|oder|/)\s*$'
 
-# Posting fully written in another language (stopword ratio heuristic) -> flag only.
+# Description written mostly in a language the user does not speak -> flag only (the
+# language is then probably needed on the job; an explicit requirement is caught above).
+# Local detector (radar.pipeline.langdetect, no LLM): each line / sentence of the HTML-stripped
+# title + description is classified on its own, so appended English boilerplate (equal
+# opportunity, privacy) does not hide a French body. Evidence = share of classified words.
 posting_language:
   enabled: true
   id: posting_language
   action: flag
-  reason: 'posting in {lang}'
-  min_tokens: 40
-  min_ratio: 0.12
-  flag_languages: [French, German, Spanish, Dutch, Portuguese]
-  stopwords:
-    English: [the, and, of, to, with, for, you, we, our, your, is, are, will, be, on, this, that, have, from, team, as, an, or, who]
-    Italian: [il, lo, gli, di, che, per, con, una, uno, del, della, nel, sono, alla, delle, dei, anche, ed, questo, nostro, nostra, si, non, più]
-    French: [le, les, des, du, et, est, une, pour, dans, sur, vous, nous, avec, au, aux, ce, qui, être, votre, sont, notre, nos, vos, ou]
-    German: [der, die, das, und, ist, mit, für, sie, wir, ein, eine, zu, den, dem, von, auf, bei, auch, im, ihre, nicht, unser, unsere, oder]
-    Spanish: [el, los, las, y, para, con, una, por, que, es, se, como, su, sus, nuestro, nuestra, más, al, del, lo, tu]
-    Dutch: [het, een, van, voor, met, je, wij, jij, zijn, op, te, ook, bij, niet, dat, naar, ons, onze, jouw, wordt, aan]
-    Portuguese: [os, as, um, uma, para, com, não, são, você, nós, nosso, nossa, seu, sua, mais, também, pelo, pela]
+  reason: 'lingua probabilmente richiesta: {lang}'
+  evidence: 'testo: {shares} ({words} parole riconosciute)'
+  fields: [title, raw_text]
+  min_words: 30       # classified words needed before judging
+  min_share: 0.6      # top language share needed (a fully bilingual FR+EN posting is ~0.5)
+  flag_languages: [fr, de, es, nl, pt]
+  labels: {en: inglese, it: italiano, fr: francese, de: tedesco, es: spagnolo, nl: olandese,
+           pt: portoghese}
+  skip_if_required: [language_required]  # same language already required: one finding
 
 # Internships in these countries need a university agreement and enrollment for the whole
 # duration (MSc ends July 2027).

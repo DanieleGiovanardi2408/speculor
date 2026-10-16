@@ -24,6 +24,7 @@ from typing import Any, Protocol
 from sqlmodel import Session, col, select
 
 from radar.models import FilterResult, Posting
+from radar.pipeline import langdetect
 from radar.pipeline.normalize import country_code
 from radar.timeutil import today as utc_today
 
@@ -180,10 +181,13 @@ class PostingLanguageRule:
     id: str
     action: str
     reason: str
-    min_tokens: int
-    min_ratio: float
-    flag_languages: set[str]
-    stopwords: dict[str, frozenset[str]]
+    evidence: str
+    fields: list[str]
+    min_words: int
+    min_share: float
+    flag_languages: set[str]  # ISO codes (fr, de, ...)
+    labels: dict[str, str]  # code -> name used in reason / evidence
+    skip_if_required: set[str]  # rule ids: a hit for the same language makes this redundant
 
 
 @dataclass
@@ -303,6 +307,49 @@ def _compile_languages(s: Mapping[str, Any]) -> LanguageRule:
     )
 
 
+# Older configs name languages ("French"); the detector uses ISO codes.
+_LANG_CODES = {
+    "english": "en",
+    "italian": "it",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "dutch": "nl",
+    "portuguese": "pt",
+}
+_DEFAULT_LABELS = {
+    "en": "inglese",
+    "it": "italiano",
+    "fr": "francese",
+    "de": "tedesco",
+    "es": "spagnolo",
+    "nl": "olandese",
+    "pt": "portoghese",
+}
+
+
+def _lang_code(value: Any) -> str:
+    v = str(value).strip().lower()
+    return _LANG_CODES.get(v, v)
+
+
+def _compile_posting_language(s: Mapping[str, Any]) -> PostingLanguageRule:
+    labels = dict(_DEFAULT_LABELS)
+    labels.update({_lang_code(k): str(v) for k, v in (s.get("labels") or {}).items()})
+    return PostingLanguageRule(
+        id=str(s.get("id", "posting_language")),
+        action=str(s.get("action", "flag")),
+        reason=str(s.get("reason", "lingua probabilmente richiesta: {lang}")),
+        evidence=str(s.get("evidence", "testo: {shares} ({words} parole riconosciute)")),
+        fields=list(s.get("fields") or ["title", "raw_text"]),
+        min_words=int(s.get("min_words", s.get("min_tokens", 30))),
+        min_share=float(s.get("min_share", 0.6)),
+        flag_languages={_lang_code(x) for x in s.get("flag_languages") or []},
+        labels=labels,
+        skip_if_required={str(x) for x in s.get("skip_if_required") or ["language_required"]},
+    )
+
+
 def _compile_post_graduation(s: Mapping[str, Any], start: StartRule | None) -> PostGraduationRule:
     trailing: re.Pattern[str] | None = None
     keywords = [str(k) for k in s.get("trailing_start_keywords") or []]
@@ -389,18 +436,7 @@ def compile_rules(cfg: Mapping[str, Any]) -> Rules:
         rules.languages = _compile_languages(cfg["languages"])
     if _enabled(pl := cfg.get("posting_language")):
         assert isinstance(pl, Mapping)
-        rules.posting_language = PostingLanguageRule(
-            id=str(pl.get("id", "posting_language")),
-            action=str(pl.get("action", "flag")),
-            reason=str(pl.get("reason", "posting in {lang}")),
-            min_tokens=int(pl.get("min_tokens", 40)),
-            min_ratio=float(pl.get("min_ratio", 0.12)),
-            flag_languages={str(x) for x in pl.get("flag_languages") or []},
-            stopwords={
-                str(k): frozenset(str(w).lower() for w in v)
-                for k, v in (pl.get("stopwords") or {}).items()
-            },
-        )
+        rules.posting_language = _compile_posting_language(pl)
     if _enabled(en := cfg.get("enrollment")):
         assert isinstance(en, Mapping)
         rules.enrollment = EnrollmentRule(
@@ -889,25 +925,30 @@ def _eval_languages(rule: LanguageRule, posting: PostingLike, max_chars: int) ->
     return hits
 
 
-def detect_language(rule: PostingLanguageRule, text: str) -> tuple[str | None, float]:
-    tokens = re.findall(r"[^\W\d_]+", text.lower())
-    if len(tokens) < rule.min_tokens:
-        return None, 0.0
-    counts = {lang: sum(1 for t in tokens if t in words) for lang, words in rule.stopwords.items()}
-    lang = max(counts, key=lambda k: counts[k])
-    ratio = counts[lang] / len(tokens)
-    others = sorted((v for k, v in counts.items() if k != lang), reverse=True)
-    if ratio < rule.min_ratio or (others and counts[lang] < 1.3 * others[0]):
-        return None, ratio
-    return lang, ratio
-
-
-def _eval_posting_language(rule: PostingLanguageRule, posting: PostingLike) -> Hit | None:
-    text = _field(posting, "raw_text")
-    lang, _ = detect_language(rule, text)
+def _eval_posting_language(
+    rule: PostingLanguageRule, posting: PostingLike, required: Iterable[Hit]
+) -> Hit | None:
+    """Flag a description written mostly in a language the user does not speak."""
+    det = langdetect.detect(_field(posting, f) for f in rule.fields)
+    lang = det.lang
     if lang is None or lang not in rule.flag_languages:
         return None
-    return Hit(rule.id, rule.action, _fmt(rule.reason, lang=lang), None)
+    if det.words < rule.min_words or det.share < rule.min_share:
+        return None
+    label = rule.labels.get(lang, lang)
+    # "French required" already says it (and is stronger): one finding per language.
+    names = {label.lower(), *(n for n, c in _LANG_CODES.items() if c == lang)}
+    if any(
+        h.rule_id in rule.skip_if_required and any(n in h.reason.lower() for n in names)
+        for h in required
+    ):
+        return None
+    shares = ", ".join(
+        f"{rule.labels.get(k, k)} {round(v * 100)}%"
+        for k, v in sorted(det.shares.items(), key=lambda kv: -kv[1])
+    )
+    evidence = _fmt(rule.evidence, shares=shares, words=det.words)
+    return Hit(rule.id, rule.action, _fmt(rule.reason, lang=label), evidence)
 
 
 # --------------------------------------------------------------------------------------
@@ -1117,7 +1158,7 @@ def evaluate(
     if compiled.languages:
         hits.extend(_eval_languages(compiled.languages, posting, max_chars))
     pl = compiled.posting_language
-    if pl and (hit := _eval_posting_language(pl, posting)):
+    if pl and (hit := _eval_posting_language(pl, posting, hits)):
         hits.append(hit)
     if compiled.enrollment:
         remote = compiled.location.remote if compiled.location else []

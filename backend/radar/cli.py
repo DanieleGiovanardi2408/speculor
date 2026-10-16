@@ -119,6 +119,30 @@ def rank(top: Annotated[int, typer.Option(help="How many top titles to print")] 
 
 
 @app.command()
+def rescore(
+    flagged_language: Annotated[
+        bool,
+        typer.Option(
+            "--flagged-language",
+            help="Postings with a language finding (posting_language / language_required)",
+        ),
+    ] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Only count, change nothing")] = False,
+    limit: Annotated[int | None, typer.Option(help="Re-score at most N postings")] = None,
+) -> None:
+    """Delete stale LLM scores and score again (run `radar refilter` first)."""
+    from radar.db import session_scope
+    from radar.llm.scoring import rescore_flagged_language
+
+    if not flagged_language:
+        console.print("Specify what to re-score, e.g. --flagged-language.")
+        raise typer.Exit(2)
+    with session_scope() as s:
+        stats = rescore_flagged_language(s, run_id=None, dry_run=dry_run, limit=limit)
+    console.print(stats)
+
+
+@app.command()
 def packs(
     limit: Annotated[int, typer.Option()] = 5,
     posting_id: Annotated[int | None, typer.Option(help="Build the pack for one posting")] = None,
