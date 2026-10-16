@@ -317,9 +317,9 @@ export const postingsSeed: PostingDetail[] = seeds.map((s, i) => {
 });
 
 export const contactsSeed: Contact[] = [
-  { id: 1, posting_id: 101, name: "Marta Esempio", role: "Analytics Lead", profile_url: "https://www.linkedin.com/in/marta-esempio-fittizia", why: "Responsabile del team pricing citato nell'annuncio." },
-  { id: 2, posting_id: 101, name: "Luca Prova", role: "Talent Acquisition", profile_url: null, why: "Recruiter indicato come referente." },
-  { id: 3, posting_id: 112, name: "Sofia Campione", role: "Strategy Manager", profile_url: "https://www.linkedin.com/in/sofia-campione-fittizia", why: "Ha scritto il post sul programma di internship." },
+  { id: 1, posting_id: 101, name: "Marta Esempio", role: "Analytics Lead", profile_url: "https://www.linkedin.com/in/marta-esempio-fittizia", why: "Responsabile del team pricing citato nell'annuncio.", source: "manual", source_query: null, needs_review: false },
+  { id: 2, posting_id: 101, name: "Luca Prova", role: "Talent Acquisition", profile_url: null, why: "Recruiter indicato come referente.", source: "manual", source_query: null, needs_review: false },
+  { id: 3, posting_id: 112, name: "Sofia Campione", role: "Strategy Manager", profile_url: "https://www.linkedin.com/in/sofia-campione-fittizia", why: "Ha scritto il post sul programma di internship.", source: "manual", source_query: null, needs_review: false },
 ];
 
 const draftBase = {

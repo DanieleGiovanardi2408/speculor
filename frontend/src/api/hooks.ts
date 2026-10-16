@@ -15,6 +15,8 @@ import type {
   CompanyPatch,
   Contact,
   ContactCreate,
+  ContactPatch,
+  ContactSearchResult,
   Draft,
   DraftCreate,
   DraftForContactBody,
@@ -295,6 +297,28 @@ export function useCreateContact(postingId: number) {
     mutationFn: (body: ContactCreate) => api.post<Contact>("/api/contacts", body),
     onSuccess: (c) =>
       qc.setQueryData<Pack | null>(qk.pack(postingId), (old) => (old ? { ...old, contacts: [...old.contacts, c] } : old)),
+  });
+}
+
+export function useFindContacts(postingId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<ContactSearchResult>(`/api/postings/${postingId}/contacts/find`),
+    onSuccess: (res) =>
+      qc.setQueryData<Pack | null>(qk.pack(postingId), (old) =>
+        old ? { ...old, contacts: [...old.contacts, ...res.contacts.filter((c) => !old.contacts.some((o) => o.id === c.id))] } : old,
+      ),
+  });
+}
+
+export function usePatchContact(postingId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: ContactPatch }) => api.patch<Contact>(`/api/contacts/${id}`, patch),
+    onSuccess: (c) =>
+      qc.setQueryData<Pack | null>(qk.pack(postingId), (old) =>
+        old ? { ...old, contacts: old.contacts.map((x) => (x.id === c.id ? c : x)) } : old,
+      ),
   });
 }
 

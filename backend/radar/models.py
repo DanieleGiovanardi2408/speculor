@@ -180,6 +180,11 @@ class Contact(SQLModel, table=True):
     role: str | None = None
     profile_url: str | None = None
     why: str | None = None
+    # Provenance, not personal data: "manual" (typed by the user) or "search" (found by
+    # radar.llm.contacts from public search results; may be wrong, so needs_review starts True).
+    source: str = "manual"
+    source_query: str | None = None
+    needs_review: bool = False
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -237,8 +242,10 @@ class LLMUsage(SQLModel, table=True):
     run_id: int | None = Field(default=None, foreign_key="runs.id", index=True)
     provider: str
     model: str
-    purpose: str  # scoring | pack | draft
+    purpose: str  # scoring | pack | draft | contacts
     requests: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    tool_calls: int = 0  # server-side tool calls (web searches, page opens)
+    est_cost_eur: float = 0.0  # estimated from published prices (radar.llm.contacts)
     at: datetime = Field(default_factory=utcnow)

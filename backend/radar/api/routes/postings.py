@@ -1,4 +1,5 @@
-"""Postings: list/detail, manual add, triage, override, mark-sent, application pack."""
+"""Postings: list/detail, manual add, triage, override, mark-sent, application pack, contact
+search."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from radar.api import schemas
 from radar.api.deps import SessionDep
 from radar.api.routes.common import (
     application_out,
+    contact_out,
     detail,
     get_or_404,
     local_today,
@@ -20,7 +22,7 @@ from radar.api.routes.common import (
     summaries,
 )
 from radar.api.routes.skip import compose_note, split_skip
-from radar.models import Application, ApplicationPack, FilterResult, Posting
+from radar.models import Application, ApplicationPack, Contact, FilterResult, Posting
 from radar.pipeline.filters import POST_GRADUATION_ID
 from radar.timeutil import utcnow
 
@@ -239,3 +241,47 @@ def generate_pack(posting_id: int, session: SessionDep) -> schemas.PackOut:
             status.HTTP_502_BAD_GATEWAY, f"Pack generation produced no pack: {stats}"
         )
     return pack_out(session, pack)
+
+
+@router.post("/{posting_id}/contacts/find", response_model=schemas.ContactSearchOut)
+def find_posting_contacts(posting_id: int, session: SessionDep) -> schemas.ContactSearchOut:
+    """Search 2-3 public profiles for this posting (Groq browser search, budget-capped).
+
+    Results come from public search results only, are stored as contacts marked
+    ``needs_review`` and are never contacted automatically.
+    """
+    get_or_404(session, Posting, posting_id, "Posting")
+    from radar.llm import contacts as finder
+    from radar.llm.provider import LLMError, MissingKeyError, RateLimitExhausted
+
+    before = {c.id for c in session.exec(select(Contact).where(Contact.posting_id == posting_id))}
+    try:
+        stats = finder.find_contacts(session, posting_id)
+    except finder.BudgetExceeded as exc:
+        session.rollback()
+        msg = (
+            "Limite giornaliero di ricerche contatti raggiunto: riprova domani."
+            if exc.reason == "daily_cap"
+            else "Limite di spesa mensile per la ricerca contatti raggiunto."
+        )
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg) from exc
+    except MissingKeyError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "GROQ_API_KEY mancante") from exc
+    except RateLimitExhausted as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, f"Limite Groq: {exc}") from exc
+    except LLMError as exc:
+        session.rollback()
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Ricerca non riuscita: {exc}") from exc
+    rows = session.exec(
+        select(Contact).where(Contact.posting_id == posting_id).order_by(col(Contact.id))
+    ).all()
+    budget = finder.budget_status(session).as_dict()
+    return schemas.ContactSearchOut(
+        stored=int(stats.get("stored", 0)),
+        found=int(stats.get("found", 0)),
+        dropped=stats.get("dropped") or {},
+        contacts=[contact_out(c) for c in rows if c.id not in before],
+        budget=schemas.ContactBudget(**budget),
+    )

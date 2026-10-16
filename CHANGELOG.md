@@ -44,6 +44,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Makefile, local demo mode without API keys, CI (backend, frontend, gitleaks).
 - Pre-commit hooks: gitleaks, ruff, hygiene checks and a personal-data guard.
 
+- Contact search ("Cerca contatti", `radar contacts find --posting-id ID | --alta [--drafts]`,
+  `POST /api/postings/{id}/contacts/find`, daily for up to 5 Alta postings with a pack): 2-3
+  public profiles per posting (Luiss alumni, similar role, likely hiring manager) via Groq's
+  built-in browser search. Contacts are kept only when grounded in the executed search results
+  (URL checked, slug must match the name), stored as "da verificare" with the source query.
+  Estimated cost per call in `llm_usage.est_cost_eur`; hard monthly cap
+  (`RADAR_CONTACTS_MONTHLY_CAP_EUR`, default 5) and daily call cap. Never logs into LinkedIn,
+  never runs linkedin-cli, never sends anything.
+
 ### Removed
 
 - GitHub Actions daily cron and data branch (runs locally with launchd).

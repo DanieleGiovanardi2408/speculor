@@ -469,3 +469,14 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
     session.add(draft)
     session.flush()
     return draft
+
+
+def draft_outreach_for_contact(
+    session: Session,
+    posting_id: int,
+    contact_id: int,
+    kinds: tuple[str, ...] = ("linkedin_connection_note", "linkedin_message"),
+) -> list[Draft]:
+    """Connection note (<= 300 chars, checked by style) and message for one contact, via
+    ``draft_for_contact``. Drafts only (status "draft"): sending stays with ``radar send``."""
+    return [draft_for_contact(session, posting_id, contact_id, kind) for kind in kinds]

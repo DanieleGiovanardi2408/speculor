@@ -50,7 +50,11 @@ interface PostingDetail extends PostingSummary { raw_text: string | null; via: s
   history: ChangeEventOut[]; pack_id: number | null }
 
 interface Contact { id: number; posting_id: number | null; name: string; role: string | null;
-  profile_url: string | null; why: string | null }
+  profile_url: string | null; why: string | null
+  source: "manual" | "search"; source_query: string | null; needs_review: boolean }
+interface ContactSearchResult { stored: number; found: number; dropped: Record<string, number>;
+  contacts: Contact[]; budget: { month_cost_eur: number; monthly_cap_eur: number;
+  calls_today: number; daily_call_cap: number } }
 interface Draft { id: number; posting_id: number | null; pack_id: number | null;
   contact_id: number | null; kind: DraftKind; channel: "linkedin" | "email" | "other";
   recipient: string | null; text: string; status: DraftStatus; style_issues: string[];
@@ -102,7 +106,9 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | GET | /api/postings/{id}/pack | | Pack (404 if none) |
 | POST | /api/postings/{id}/pack | generate now (LLM) | Pack |
 | PATCH | /api/packs/{id} | `{cover_letter?, form_answers?, cv_version?, apply_link?}` | Pack |
+| POST | /api/postings/{id}/contacts/find | public profile search (Groq browser search): up to 3 contacts, stored with `needs_review=true`. 429 when the monthly cost cap or the daily call cap is reached, 503 without `GROQ_API_KEY` | ContactSearchResult |
 | POST | /api/contacts | `{posting_id, name, role?, profile_url?, why?}` | Contact |
+| PATCH | /api/contacts/{id} | `{needs_review?}` (the user checked a found profile) | Contact |
 | DELETE | /api/contacts/{id} | | 204 |
 | GET | /api/drafts | query: `status` (default `draft`), `channel` | Draft[] |
 | POST | /api/drafts | `{posting_id, contact_id?, kind, channel?, recipient?, text}` | Draft |

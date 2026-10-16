@@ -47,6 +47,23 @@ class Settings(BaseSettings):
         default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         validation_alias="RADAR_EMBED_MODEL",
     )
+    # Contact search (public profiles via Groq built-in browser search). Hard caps, enforced in
+    # radar.llm.contacts before every call: estimated monthly cost and calls per UTC day.
+    contacts_provider: Literal["groq", "fake"] | None = Field(
+        default=None, validation_alias="RADAR_CONTACTS_PROVIDER"
+    )
+    contacts_model: str = Field(
+        default="openai/gpt-oss-120b", validation_alias="RADAR_CONTACTS_MODEL"
+    )
+    contacts_monthly_cap_eur: float = Field(
+        default=5.0, ge=0, validation_alias="RADAR_CONTACTS_MONTHLY_CAP_EUR"
+    )
+    contacts_daily_call_cap: int = Field(
+        default=10, ge=0, validation_alias="RADAR_CONTACTS_DAILY_CALL_CAP"
+    )
+    contacts_daily_postings: int = Field(
+        default=5, ge=0, validation_alias="RADAR_CONTACTS_DAILY_POSTINGS"
+    )
 
     # Collection
     user_agent: str = Field(
@@ -87,6 +104,12 @@ class Settings(BaseSettings):
     @property
     def effective_draft_provider(self) -> LLMProviderName:
         return self.draft_provider or self.llm_provider
+
+    @property
+    def effective_contacts_provider(self) -> Literal["groq", "fake"]:
+        if self.contacts_provider:
+            return self.contacts_provider
+        return "fake" if self.llm_provider == "fake" else "groq"
 
     @property
     def cache_dir(self) -> Path:
