@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Lumen Labs AI</title>
+    <description>Current job openings</description>
+    <link>https://lumenlabs.teamtailor.com/jobs</link>
+    <item>
+      <title>Machine Learning Intern</title>
+      <description>&lt;p&gt;Train &lt;strong&gt;small models&lt;/strong&gt; at a fictional AI lab.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;PyTorch&lt;/li&gt;&lt;/ul&gt;</description>
+      <pubDate>Mon, 05 Oct 2026 10:15:00 +0200</pubDate>
+      <link>https://lumenlabs.teamtailor.com/jobs/7000001-machine-learning-intern</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>2b1e4c4e-0000-4000-8000-000000000001</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Amsterdam HQ</tt:name>
+          <tt:city>Amsterdam</tt:city>
+          <tt:country>Netherlands</tt:country>
+        </tt:location>
+        <tt:location>
+          <tt:name>Rome</tt:name>
+          <tt:city>Rome</tt:city>
+          <tt:country>Italy</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Research</tt:department>
+      <tt:role>Machine Learning</tt:role>
+      <tt:division/>
+    </item>
+    <item>
+      <title>Office Manager</title>
+      <description>&lt;p&gt;Run the office.&lt;/p&gt;</description>
+      <pubDate>Tue, 01 Sep 2026 08:00:00 +0200</pubDate>
+      <link>https://lumenlabs.teamtailor.com/jobs/7000002-office-manager</link>
+      <remoteStatus>none</remoteStatus>
+      <guid>2b1e4c4e-0000-4000-8000-000000000002</guid>
+      <tt:locations/>
+      <tt:department>Operations</tt:department>
+      <tt:role/>
+      <tt:division/>
+    </item>
+  </channel>
+</rss>

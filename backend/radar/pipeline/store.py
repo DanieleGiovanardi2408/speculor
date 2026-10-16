@@ -31,7 +31,20 @@ from radar.pipeline.normalize import (
 from radar.schemas import RawPosting
 from radar.timeutil import utcnow
 
-ATS_SOURCES = frozenset({"greenhouse", "lever", "ashby", "smartrecruiters", "workday"})
+ATS_SOURCES = frozenset(
+    {
+        "greenhouse",
+        "lever",
+        "ashby",
+        "smartrecruiters",
+        "workday",
+        "personio",
+        "workable",
+        "teamtailor",
+        "recruitee",
+        "inrecruiting",
+    }
+)
 CONTENT_CHANGED = "content changed"
 
 _INTERN_RE = re.compile(

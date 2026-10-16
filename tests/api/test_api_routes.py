@@ -463,10 +463,10 @@ def test_companies(client: TestClient) -> None:
 def test_settings(client: TestClient) -> None:
     s = client.get("/api/settings").json()
     assert s["weekly_goal"] == 10
-    assert s["sources_enabled"] == {
-        k: True
-        for k in ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "linkedin", "email")
-    }
+    from radar.api.routes.settings import DEFAULT_SOURCES
+
+    assert s["sources_enabled"] == dict.fromkeys(DEFAULT_SOURCES, True)
+    assert {"workday", "personio", "inrecruiting", "linkedin", "email"} <= set(DEFAULT_SOURCES)
     r = client.put("/api/settings", json={"weekly_goal": 7, "sources_enabled": {"linkedin": False}})
     assert r.json()["weekly_goal"] == 7
     assert r.json()["sources_enabled"]["linkedin"] is False

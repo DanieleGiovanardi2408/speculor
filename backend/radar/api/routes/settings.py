@@ -20,6 +20,11 @@ DEFAULT_SOURCES = (
     "ashby",
     "smartrecruiters",
     "workday",
+    "personio",
+    "workable",
+    "teamtailor",
+    "recruitee",
+    "inrecruiting",
     "linkedin",
     "email",
 )

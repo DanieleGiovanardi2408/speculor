@@ -9,7 +9,15 @@ from __future__ import annotations
 import logging
 from urllib.parse import urlsplit
 
-from radar.connectors import ashby, greenhouse, lever, smartrecruiters, workday
+from radar.connectors import (
+    ashby,
+    greenhouse,
+    lever,
+    personio,
+    smartrecruiters,
+    workable,
+    workday,
+)
 from radar.connectors.http import PoliteClient
 from radar.connectors.linkedin_guest import DETAIL_URL, parse_detail, parse_job_id
 
@@ -53,6 +61,15 @@ def _check(client: PoliteClient, url: str) -> bool | None:
     sr = smartrecruiters.parse_posting_url(url)
     if sr:
         return smartrecruiters.fetch_single(client, sr[0], sr[1]) is not None
+
+    if personio.parse_posting_url(url):
+        return personio.fetch_single(client, url) is not None
+
+    wk = workable.parse_posting_url(url)
+    if wk:
+        if not wk[0]:
+            return None  # short link without the account slug: board unknown
+        return workable.fetch_single(client, wk[0], wk[1]) is not None
 
     wd = workday.parse_posting_url(url)
     if wd:
