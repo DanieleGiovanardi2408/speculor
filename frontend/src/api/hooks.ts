@@ -13,6 +13,7 @@ import type {
   ApplicationPatch,
   Company,
   CompanyPatch,
+  ConnectorStatus,
   Contact,
   ContactCreate,
   ContactPatch,
@@ -52,6 +53,7 @@ export const qk = {
   runs: (limit: number) => ["runs", limit] as const,
   run: (id: number) => ["run", id] as const,
   usage: (days: number) => ["usage", days] as const,
+  connectorStatus: ["connectors", "status"] as const,
 };
 
 // ---------- Queries ----------
@@ -116,6 +118,12 @@ export const useSettings = () =>
   useQuery({
     queryKey: qk.settings,
     queryFn: ({ signal }) => api.get<SettingsOut>("/api/settings", undefined, signal),
+  });
+
+export const useConnectorStatus = () =>
+  useQuery({
+    queryKey: qk.connectorStatus,
+    queryFn: ({ signal }) => api.get<ConnectorStatus>("/api/connectors/status", undefined, signal),
   });
 
 export const useRuns = (limit = 10) =>
@@ -508,5 +516,13 @@ export function usePutSettings() {
       qc.setQueryData(qk.settings, s);
       qc.setQueryData<Today>(qk.today, (old) => (old ? { ...old, weekly_goal: s.weekly_goal } : old));
     },
+  });
+}
+
+export function useResumeConnector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (source: string) => api.post<ConnectorStatus>(`/api/connectors/${encodeURIComponent(source)}/resume`),
+    onSuccess: (status) => qc.setQueryData(qk.connectorStatus, status),
   });
 }

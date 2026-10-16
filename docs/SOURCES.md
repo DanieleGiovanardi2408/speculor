@@ -166,6 +166,46 @@ time; that board is then reported and skipped.
 - LinkedIn postings can still be added by hand (see Manual add); they are stored from the URL only.
 
 ## Email alerts (IMAP) (`email_alerts.py`, `imap_auth.py`, `email_parsers/`)
+## LinkedIn saved searches (`linkedin_jobs.py`)
+
+Source `linkedin_jobs`. The user's own job searches, run with the user's own LinkedIn session
+through linkedin-cli (mayai-linkedin-cli >= 0.3, `RADAR_LINKEDIN_BIN`) as a subprocess. Nothing
+here talks to LinkedIn directly: the CLI's jitter, daily quotas and block detection apply as-is.
+
+- **Enabled only when** the private `config/linkedin_searches.yaml` (gitignored; format in
+  `config/linkedin_searches.example.yaml`) and the binary both exist, and never in CI.
+- **Commands used**: `linkedin --json quota` (offline, read before and after every call),
+  `linkedin --json jobs search --geo-id <id> --experience internship --experience entry
+  --date-posted <window> --sort recent --limit 25 -- <keywords>`, `linkedin --json jobs get <id>`.
+- **Budget**: at most `max_calls` (default and ceiling 25) calls a day that reach LinkedIn,
+  measured on the CLI's own counter, never more than the CLI's `jobs` (30/day) and `api_total`
+  quotas still allow. One search with a `geo_id` = one call (25 results). A location given only
+  by `name` costs one extra lookup the first time (cached by the CLI). `max_details` calls are
+  kept for `jobs get` on the newest postings whose description is not in the DB yet; a posting
+  that turns out closed is dropped.
+- **Once a day**: the `linkedin_jobs:state` setting stores `last_run` (local date), the rotation
+  `cursor` and the call count. A second run on the same day returns nothing and calls nothing.
+  `last_run` is written before the first call, so a crash can't cause a second run.
+- **Rotation**: each (search, location) pair is a slot, ordered round-robin (every search's
+  first location, then every second location, ...). Each day runs slots from the cursor until
+  the next one would exceed the budget, and the next day continues from there. The cycle takes
+  `ceil(slot cost / (max_calls - max_details))` days; `date_posted: auto` uses `24h` for a 1-day
+  cycle, `week` up to 7 days and `month` beyond, so a full cycle never leaves a gap. With the
+  default budget (22 search calls a day) up to 154 slots fit in a week.
+- **Mapping**: `external_id` = LinkedIn job id, `url` = `https://www.linkedin.com/jobs/view/<id>/`,
+  which canonicalizes to the same URL as LinkedIn email alerts, so the two de-duplicate.
+  The `(Ibrido)` / `(Da remoto)` suffix of the location goes to `extra.workplace`; salary text,
+  Easy Apply and the search id go to `extra`.
+- **Not exhaustive** (`exhaustive = False`): a posting missing from a search is never closed.
+- **Stops, never retries**: CLI exit 3 (checkpoint, captcha, HTTP 429 or 999) and exit 2 (not
+  logged in) raise `SourcePaused("linkedin_jobs", reason, action)`; the Oggi screen shows the
+  action ("Apri linkedin.com nel browser e completa la verifica..., poi `linkedin auth login` e
+  `radar connectors resume linkedin_jobs`"). Exit 4 (CLI quota) ends the day quietly; two failed
+  searches in a row end the day; a timeout is a `SourceError`.
+- **geoIds**: the number after `geoId=` in the address bar when searching jobs for a place on
+  linkedin.com (no API call). Italy is `103350119` (verified 2026-10-16).
+
+## Email alerts (IMAP) (`email_alerts.py`, `email_parsers/`)
 
 Optional source `email`. It reads job-alert emails from **one folder/label** (`radar`: a Gmail
 label or an Outlook folder filled by a filter/rule), so LinkedIn and JobTeaser postings arrive

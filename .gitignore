@@ -7,6 +7,7 @@ config/rules.yaml
 config/facts.yaml
 config/jobteaser_searches.yaml
 jobteaser-profile/
+config/linkedin_searches.yaml
 radar_seed.json
 *.pdf
 *.db

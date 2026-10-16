@@ -70,6 +70,7 @@ def fake_keyring(monkeypatch: pytest.MonkeyPatch) -> FakeKeyring:
     return ring
 
 
+@pytest.fixture(autouse=True)
 def _no_real_jobteaser_profile(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[None]:
@@ -78,6 +79,18 @@ def _no_real_jobteaser_profile(
 
     missing = tmp_path_factory.getbasetemp() / "no-jobteaser-profile"
     monkeypatch.setenv("RADAR_JOBTEASER_PROFILE", str(missing))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_linkedin_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> Iterator[None]:  # type: ignore[no-untyped-def]
+    """The developer's machine may have config/linkedin_searches.yaml and a real `linkedin`
+    binary: tests must never pick them up (or call LinkedIn). Tests opt in explicitly."""
+    from radar.config import get_settings
+
+    monkeypatch.setenv("RADAR_LINKEDIN_BIN", str(tmp_path_factory.mktemp("nobin") / "linkedin"))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

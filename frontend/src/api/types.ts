@@ -309,6 +309,20 @@ export interface SettingsOut {
   sources_enabled: Record<string, boolean>;
 }
 
+/** One entry of GET /api/connectors/status: a source paused until the user resumes it. */
+export interface ConnectorPause {
+  paused: boolean;
+  /** Short technical reason, e.g. "checkpoint", "HTTP 999" (no personal data). */
+  reason: string;
+  /** Italian instruction: what the user should do before resuming. */
+  action: string;
+  /** ISO timestamp of the pause. */
+  since: string;
+}
+
+/** GET /api/connectors/status: source name -> pause state (only paused sources are present). */
+export type ConnectorStatus = Record<string, ConnectorPause>;
+
 // ---- Request bodies / query params (derived from the Routes table) ----
 
 export type PostingSort = "priority" | "deadline" | "company" | "first_seen" | "similarity";

@@ -26,11 +26,17 @@ DEFAULT_SOURCES = (
 
 
 def default_sources() -> tuple[str, ...]:
-    """DEFAULT_SOURCES, plus "jobteaser" once its browser profile exists on this machine."""
+    """DEFAULT_SOURCES, plus "jobteaser" once its browser profile exists on this machine and
+    "linkedin_jobs" when its searches file and the linkedin-cli binary exist."""
     from radar.config import get_settings
     from radar.connectors.jobteaser import profile_ready
+    from radar.connectors.linkedin_jobs import available
 
-    return (*DEFAULT_SOURCES, "jobteaser") if profile_ready(get_settings()) else DEFAULT_SOURCES
+    settings = get_settings()
+    extra = (("jobteaser",) if profile_ready(settings) else ()) + (
+        ("linkedin_jobs",) if available(settings) else ()
+    )
+    return (*DEFAULT_SOURCES, *extra)
 
 
 def weekly_goal(session: Session) -> int:

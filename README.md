@@ -137,7 +137,7 @@ Local only (`make dev-real`), in Italian:
 
 | Page | What it is for |
 |---|---|
-| *Oggi* | Today's action list: deadlines in the next 7 days, new Alta postings, packs to review, follow-ups, drafts, weekly goal; last run card with LLM usage |
+| *Oggi* | Today's action list: deadlines in the next 7 days, new Alta postings, packs to review, follow-ups, drafts, weekly goal; last run card with LLM usage; a banner for paused sources with what to do and *Riprendi* |
 | *Annunci* | Postings in three tabs: *Stage* \| *Dopo la laurea* \| *Scartati*. Keyboard: `j`/`k` move, `Enter` open details, `p` pack, `s` mark as sent, `x` skip with a reason, `r` restore, `/` search, `?` help (plus `g o` / `g a` / `g p` to jump between pages) |
 | *Pacchetto* | Application pack: cover letter, form answers, contacts and drafts, all editable |
 | *Approvazioni* | Approve or skip outreach drafts |
@@ -191,6 +191,20 @@ Radar is a personal tool that reads a small amount of public data, politely:
   parsed; every other message is ignored and never sent to the LLM. Email content is never
   logged. Credentials (a Gmail app password, or an Outlook OAuth2 token from `radar imap login`)
   live in the macOS keychain or the local `.env`. Setup: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
+  blocks Radar, the run records the failure and moves on; a source that needs the user (LinkedIn
+  checkpoint, expired session) is paused and shown on *Oggi* until the user resumes it.
+- **LinkedIn**: LinkedIn's User Agreement restricts automated access. Radar does not crawl
+  LinkedIn; postings arrive through LinkedIn's own alert emails, *Aggiungi da URL*, and
+  (optional, off unless `config/linkedin_searches.yaml` exists) the user's own saved job
+  searches run through linkedin-cli: once a day, one call at a time, at most 25 calls, never
+  retried after a checkpoint, captcha, 429 or 999. Sending through linkedin-cli uses the user's
+  own session, runs only locally and only after an explicit confirmation of each message. Both
+  are the user's own responsibility.
+- **Email alerts (IMAP)**: optional. Radar reads only one Gmail label (`radar`, set with `RADAR_IMAP_FOLDER`), opens
+  it read-only (`EXAMINE`) and fetches with `BODY.PEEK`, so nothing is marked as read, moved,
+  deleted or flagged. Only LinkedIn and JobTeaser alert senders are parsed; every other message
+  is ignored and never sent to the LLM. Email content is never logged, and the credentials (a
+  Gmail app password) live only in the local `.env`.
 - **LLM data**: posting text and the user's profile are sent to the configured LLM provider (Groq
   by default) for scoring and drafting. From email, only the content of alert-sender messages is
   used. Use the `fake` provider to keep everything offline.

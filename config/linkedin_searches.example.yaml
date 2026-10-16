@@ -1,0 +1,53 @@
+# Radar "linkedin_jobs" source: EXAMPLE saved searches (the real file is
+# config/linkedin_searches.yaml, gitignored). Read by radar.connectors.linkedin_jobs.
+#
+# How it runs: once a day, sequentially, through your own `linkedin` CLI
+# (mayai-linkedin-cli >= 0.3, RADAR_LINKEDIN_BIN), with your own session. The source is only
+# enabled when this file (the real one) and the binary both exist. Never in CI.
+#
+# Budget: linkedin-cli allows at most 30 job calls a day; Radar uses at most `max_calls`
+# (default and ceiling 25) and stops before going over. One search = one call when the
+# location has a geo_id (25 results per call). `max_details` of those calls are kept to read
+# the description of the newest postings that Radar has not seen yet.
+#
+# Rotation: every (search, location) pair is a slot. Slots run round-robin (the first
+# location of every search, then the second, ...) and each day starts where the previous day
+# stopped, so all slots run once every `ceil(slots / (max_calls - max_details))` days.
+# `date_posted: auto` picks the window from that cycle: 1 day -> 24h, up to 7 days -> week,
+# longer -> month. Keep the cycle within 7 days (a test checks this file does).
+# Postings are deduplicated with LinkedIn email alerts on https://www.linkedin.com/jobs/view/<id>.
+
+max_calls: 25          # <= 25
+max_details: 3         # detail calls for the newest unseen postings, within max_calls
+date_posted: auto      # auto | 24h | week | month
+sort: recent           # recent | relevant
+limit: 25              # results per search (25 = one call)
+
+# geo_id: the number after `geoId=` in the address bar when you search jobs for that place on
+# linkedin.com (zero API calls). Prefer it: a `name:` costs one extra lookup call the first
+# time and that lookup is the least reliable endpoint.
+locations:
+  italy: {geo_id: "103350119"}        # verified 2026-10-16
+  netherlands: {geo_id: "102890719"}  # verify once in the browser
+  germany: {geo_id: "101282230"}      # verify once in the browser
+
+location_groups:
+  europe: [netherlands, germany]
+
+defaults:                 # per-search keys override these
+  experience: [internship, entry]     # internship | entry | associate | mid-senior | ...
+  # job_types: [internship, full-time]
+  # workplace: [onsite, hybrid, remote]
+
+searches:
+  # keywords accept LinkedIn's boolean syntax: quotes, OR, NOT
+  - id: data-analyst
+    keywords: '"data analyst" OR "business intelligence analyst"'
+    locations: [italy, europe]
+  - id: ml-engineer
+    keywords: '"machine learning engineer" OR "AI engineer"'
+    locations: [italy, europe]
+  - id: example-disabled
+    keywords: "chef de cuisine"
+    locations: [italy]
+    active: false

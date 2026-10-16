@@ -126,6 +126,15 @@ Dettagli in [docs/RUNNING.md](docs/RUNNING.md).
   all'LLM. Il contenuto delle e-mail non finisce mai nei log; le credenziali (password per app
   Gmail o token OAuth2 Outlook da `radar imap login`) stanno nel portachiavi macOS o nel `.env`
   locale. Configurazione: [docs/RUNNING.md](docs/RUNNING.md#email-alerts-imap).
+  automatico: Radar non fa crawling di LinkedIn. Facoltativo (spento finché non esiste
+  `config/linkedin_searches.yaml`): le ricerche salvate dell'utente passano da linkedin-cli una
+  volta al giorno, una chiamata alla volta, al massimo 25, senza mai ritentare dopo checkpoint,
+  captcha, 429 o 999 (la fonte va in pausa e *Oggi* mostra cosa fare). L'invio con linkedin-cli
+  è locale, confermato messaggio per messaggio. Entrambi sotto la responsabilità dell'utente.
+- **IMAP**: legge solo un'etichetta Gmail (`radar`, impostata con `RADAR_IMAP_FOLDER`) in sola lettura (`EXAMINE`,
+  `BODY.PEEK`): niente viene segnato come letto, spostato, cancellato o contrassegnato. Solo gli
+  alert di LinkedIn e JobTeaser vengono letti; il resto è ignorato e non arriva mai all'LLM. Il
+  contenuto delle e-mail non finisce mai nei log; le credenziali stanno solo nel `.env` locale.
 - **LLM**: il testo degli annunci e il profilo dell'utente vanno al provider LLM configurato.
 - **GitHub** ospita solo il codice ed esegue la CI, senza segreti e senza dati reali.
 
