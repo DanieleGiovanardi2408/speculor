@@ -37,7 +37,7 @@ All screenshots use the fictional demo data (`make dev`). Every page also works 
 ```mermaid
 flowchart LR
     LD(["launchd<br/>07:00 daily"]) -.-> S
-    S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
+    S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
     N --> F["Hard filters<br/>rules.yaml<br/>+ post-graduation track"]
     F --> L["Relevance check<br/>+ LLM scorer"]
     L --> P["Packs + drafts"]
@@ -48,7 +48,8 @@ flowchart LR
     SEND --> LI["linkedin-cli"]
 ```
 
-- **Sources**: public ATS job APIs (Greenhouse, Lever, Ashby, Workday) for a user-curated list
+- **Sources**: public ATS job APIs and feeds (Greenhouse, Lever, Ashby, Workday, Personio, Workable,
+  Teamtailor, Recruitee, inRecruiting) for a user-curated list
   of companies, optional LinkedIn and JobTeaser alert emails over read-only IMAP, and URLs added
   by hand. Details per connector in [docs/SOURCES.md](docs/SOURCES.md).
 - **Filters**: deterministic rules in `config/rules.yaml` (start window, graduation year,

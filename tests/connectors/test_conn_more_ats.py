@@ -362,3 +362,29 @@ def test_registry_builds_new_ats_connectors(client: PoliteClient) -> None:
         assert name in ATS_SOURCES and name in DEFAULT_SOURCES
     only = build_connectors(client, cfg, sources=["recruitee"])
     assert [type(c).__name__ for c in only] == ["RecruiteeConnector"]
+
+
+# ------------------------------------------------------------------ scripts/check_boards.py
+def test_check_boards_probe_counts(client: PoliteClient, mock: respx.MockRouter) -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "check_boards.py"
+    spec = importlib.util.spec_from_file_location("check_boards", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    robots(mock, RECRUITEE)
+    mock.get(f"{RECRUITEE}/api/offers/").mock(
+        return_value=httpx.Response(200, json=load_json("recruitee/offers.json"))
+    )
+    entry = {"name": "Orbis", "ats": "recruitee", "slug": "orbis", "sector": "consulting"}
+    row = mod.probe(client, entry, ["junior"])
+    assert (row["status"], row["jobs"], row["kept"], row["sector"]) == ("ok", 2, 1, "consulting")
+
+    robots(mock, "https://blocked.recruitee.com", DISALLOW)
+    row = mod.probe(client, {"ats": "recruitee", "slug": "blocked"}, None)
+    assert row["status"] == "robots" and row["jobs"] == 0
+    row = mod.probe(client, {"ats": "inrecruiting", "slug": "broken"}, None)
+    assert row["status"] == "error" and row["reason"] == "malformed entry"

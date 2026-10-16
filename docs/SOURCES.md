@@ -16,7 +16,7 @@ Everything goes through `PoliteClient` (`connectors/http.py`):
 | Rate limit per host | At least 1 s between two requests to the same host (default). `linkedin.com`: 5 s. `*.myworkdayjobs.com`: 2 s. Override with `min_interval_per_host`. |
 | Disk cache | Responses (200, plus 404/410 when a caller asks for them) are cached in `data/cache/http/` and keyed by URL + sorted params. The TTL is `RADAR_HTTP_CACHE_TTL_HOURS` (default 12 h). `use_cache=False` skips the cache. |
 | Back-off | 429, 403, 999 and 5xx are retried up to 3 times. The client waits for `Retry-After` when present (seconds or HTTP date), otherwise 5 s, 10 s, 20 s. If `Retry-After` is above 120 s, or the retries run out, it raises `SourceError`. |
-| robots.txt | `robots_allowed(url)` is cached per host. `get_text` (HTML pages) checks it by default and raises `RobotsDisallowed`, a subclass of `SourceError`. A missing robots.txt (4xx) allows everything. A 401/403/5xx robots.txt, or one that can't be reached, disallows everything. JSON API calls (`get_json`) don't check it automatically; connectors check it explicitly where it applies (Workday `/wday/cxs/`, LinkedIn `/jobs-guest/`). SmartRecruiters is disabled because of its robots.txt (see below). |
+| robots.txt | `robots_allowed(url)` is cached per host. `get_text` (HTML pages) checks it by default and raises `RobotsDisallowed`, a subclass of `SourceError`. A missing robots.txt (4xx) allows everything. A 401/403/5xx robots.txt, or one that can't be reached, disallows everything. JSON API calls (`get_json`) don't check it automatically; connectors check it explicitly where it applies (Workday `/wday/cxs/`, LinkedIn `/jobs-guest/`, and every Personio, Workable, Teamtailor, Recruitee and inRecruiting request). SmartRecruiters is disabled because of its robots.txt (see below). |
 | Counts-only logs | Log lines never include company names or posting titles. `httpx` request logging (which shows URLs and slugs) is raised to WARNING. Error messages name only the host/source and the HTTP status. |
 
 Connectors implement `fetch() -> list[RawPosting]` and raise `SourceError` on failure. The
@@ -145,6 +145,70 @@ time; that board is then reported and skipped.
   All 8 answered the anonymous CXS endpoint at setup, and none needed a session or CSRF token or was
   disallowed by robots.txt.
 
+## Personio (`personio.py`)
+
+- **Endpoint**: `GET https://<slug>.jobs.personio.de/xml` (or `.jobs.personio.com` with
+  `region: com`), plus `?language=<lang>` when the entry sets `lang`. robots.txt is checked first.
+- **Reads**: `<position>` id, name (title), office + additional offices (location), department,
+  employmentType, seniority, schedule, createdAt (posted_at) and every `jobDescription`
+  (heading + HTML body converted to text). The posting URL is `https://<host>/job/<id>`.
+- **Exhaustive**: the feed is the complete list of published positions, so close-by-absence
+  applies.
+- **Single posting**: `<slug>.jobs.personio.(de|com)/job/<id>` is looked up in the cached feed.
+- **Limits**: no deadline field. Many Personio career sites serve `robots.txt` with
+  `Disallow: /`; those boards raise `RobotsDisallowed` and are skipped, never worked around.
+  Feeds with a DTD / entity declarations are refused.
+
+## Workable (`workable.py`)
+
+- **Endpoint**: `GET https://apply.workable.com/api/v1/widget/accounts/<slug>?details=true`, the
+  public endpoint behind Workable's embeddable jobs widget. robots.txt is checked first
+  (`apply.workable.com` currently disallows nothing).
+- **Reads**: shortcode (id), title, url, locations (city, country, ISO code), department,
+  employment_type, experience, function, published_on (posted_at), and the HTML `description`.
+- **Exhaustive**: the widget lists every published job of the account.
+- **Single posting**: `apply.workable.com/<slug>/j/<shortcode>` is looked up in the cached board;
+  short links without the account slug (`apply.workable.com/j/<code>`) give `None`.
+- **Limits**: no deadline field. An unknown slug is a 404; an existing account with no open jobs
+  answers 200 with an empty list, so the account `name` is worth checking when adding a slug.
+
+## Teamtailor (`teamtailor.py`)
+
+- **Endpoint**: `GET https://<slug>.teamtailor.com/jobs.rss`, or `https://<host>/jobs.rss` when the
+  slug contains a dot (custom careers domain). robots.txt is checked first.
+- **Reads**: item title, link, the numeric job id from the link (falls back to `guid`), pubDate
+  (posted_at), the HTML description, `tt:locations` (city, country), `tt:department`, `tt:role`
+  and `remoteStatus`.
+- **Exhaustive**: the RSS feed lists every published job (checked against the career-site
+  sitemap on two boards at setup).
+- **Limits**: no deadline field.
+
+## Recruitee (`recruitee.py`)
+
+- **Endpoint**: `GET https://<slug>.recruitee.com/api/offers/` (or a custom host when the slug
+  contains a dot), the public Careers Site API. robots.txt is checked first (the Recruitee host
+  redirects it to the company's careers domain; redirects are followed).
+- **Reads**: id, title, careers_url, location / country code, department, employment type,
+  experience, published_at (posted_at), `close_at` (deadline), description + requirements (HTML).
+  Offers whose `status` is not `published` are skipped.
+- **Exhaustive**: yes, the endpoint lists every published offer.
+
+## inRecruiting (`inrecruiting.py`)
+
+- **Endpoint**: company career pages built on Zucchetti inRecruiting (intervieweb.it) load
+  `GET https://<host>.intervieweb.it/annunci.php?lang=<l>&d=<domain>&k=<key>&format=json_en`, a
+  JSON list of every published announcement for that site. `k` is the public site key printed in
+  the careers page source (not a credential). robots.txt is checked first.
+- **Config**: `ats: inrecruiting`, `slug: "<host>|<d>|<k>"`, optional `lang` (`it` by default).
+  Find the three values in the careers page source (search for `annunci.php`).
+- **Reads**: id, title, url, location/city, nation, function or team (department), contract
+  type, seniority, `published` (Italian local time, stored in UTC), `expires` (deadline, local
+  date) and the HTML description (falls back to the company/position/requirements sections).
+- **Exhaustive**: yes, the list is what the company's own careers page shows.
+- **Limits**: the shared `inrecruiting.intervieweb.it` host disallows `LAC` URLs in robots.txt;
+  this feed doesn't use them. Note that Python's `urllib.robotparser` does plain prefix matching
+  and ignores `*` wildcards in robots.txt rules.
+
 ## LinkedIn guest search (`linkedin_guest.py`)
 
 - **Endpoints**: search `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=&location=&f_TPR=r604800&start=0`
@@ -230,6 +294,8 @@ so LinkedIn and JobTeaser postings arrive without anything being fetched from th
 | `jobs.ashbyhq.com/<slug>/<id>` | board API (cached) | listed → open, absent → closed |
 | `jobs.smartrecruiters.com/<Company>/<id>-...` | Posting API detail | active → open, 404/inactive → closed |
 | `<tenant>.<wdN>.myworkdayjobs.com/[<locale>/]<site>/job/...` | CXS job detail, **only if robots.txt allows** | 200 → open, 404/410 or `posted: false` → closed |
+| `<slug>.jobs.personio.(de\|com)/job/<id>` | XML feed (cached), **only if robots.txt allows** | listed → open, absent → closed |
+| `apply.workable.com/<slug>/j/<code>` | widget board (cached) | listed → open, absent → closed |
 | `*.linkedin.com/jobs/view/...<id>` | guest jobPosting, **only if robots.txt allows** | currently always `None` |
 | `jobteaser.com` and other login-walled sites | not fetched | `None` |
 | anything else, or any error | — | `None` |
@@ -253,10 +319,33 @@ The posting is stored with `source="manual"` and `uid="manual:<sha256(canonical_
 `country_code`, `zone`, `content_hash` and `dedupe_key` are computed with
 `radar.pipeline.normalize`.
 
+## Board coverage and `scripts/check_boards.py`
+
+`uv run python scripts/check_boards.py [companies.yaml] [--ats X] [--sector Y] [--exclude OLD.yaml]`
+probes every active board one at a time through `PoliteClient` and prints, per board, the ATS,
+slug, ok/error/robots, the number of jobs on the board (title filter off; for Workday, the
+search-term and country-scoped result) and how many pass the title filter, then totals per
+sector and per ATS and the failures with their reason. It writes nothing to the database. Its
+output names slugs, so it stays on the user's machine.
+
+Snapshot of the user's (private) config after adding sector-tagged boards (October 2026): 194
+active boards — Greenhouse 74, Ashby 47, Workable 27, Workday 18, Lever 15, Personio 7,
+Teamtailor 4, Recruitee 1, inRecruiting 1. Every board answered at setup; about a third of the
+new ones had no open job that day. Companies carry a free-text `sector`
+(`fintech`, `vc`, `consulting`, `real_estate`, `ai`, `banking_insurance`, `big_tech`, ...),
+stored on the company row by `sync_companies_config` (run by the pipeline and by
+`radar sync-companies`).
+
+While adding boards, every candidate slug was checked with one request per ATS. Discarded
+candidates fell into: 404 (no such board), a 200 board that belonged to a different company
+with the same slug (checked by reading titles and locations), Workday 422 (wrong site name),
+and Personio sites whose robots.txt is `Disallow: /` (skipped, as for any disallowed board).
+
 ## Unresolved companies
 
 Companies without a supported public board stay in the user's (gitignored) `companies.yaml`
 with `ats: none` and an `unresolved` reason. Typical reasons:
-SAP SuccessFactors, Avature, Oracle Recruiting Cloud, intervieweb, Teamtailor, Factorial,
-Workable, Personio, or a fully custom careers portal. The list itself is private because it
+SAP SuccessFactors, Avature, Oracle Recruiting Cloud, Factorial, a Personio site whose robots.txt
+disallows everything, an inRecruiting page without a public feed, or a fully custom careers
+portal. The list itself is private because it
 reveals the user's target companies.

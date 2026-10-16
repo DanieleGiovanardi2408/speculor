@@ -12,7 +12,7 @@ filters, ranks and drafts; the user decides and acts.
 flowchart LR
     LD(["launchd 07:00<br/>(user's Mac)"]) -.-> Daily
     subgraph Daily["Daily pipeline (radar run, local)"]
-        S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
+        S["Sources<br/>Greenhouse · Lever · Ashby · Workday<br/>Personio · Workable · Teamtailor · Recruitee · inRecruiting<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ dedupe"]
         N --> C["Closed check<br/>+ change_events (diff)"]
         C --> F["Hard filters<br/>config/rules.yaml<br/>+ post_graduation track"]
         F --> RL["Title relevance<br/>(off-target = Bassa, no LLM)"]
@@ -34,7 +34,7 @@ flowchart LR
 |---|---|---|
 | Settings | `radar/config.py` | Env/.env settings; YAML config resolution: `config/<name>.yaml` -> DB `settings` row `config:<name>` -> `config/<name>.example.yaml` |
 | Models / DB | `radar/models.py`, `radar/db.py` | SQLModel tables: companies, postings, change_events, runs, filter_results, scores, application_packs, contacts, drafts, applications, settings, llm_usage |
-| Connectors | `radar/connectors/` | One module per source: Greenhouse, Lever, Ashby, Workday, SmartRecruiters (disabled), LinkedIn guest (stands down on robots.txt), read-only IMAP email alerts (`email_alerts.py`, `email_parsers/`). Shared polite HTTP client (`http.py`): per-host rate limit, disk cache, honest user agent, robots.txt checks, back-off honouring `Retry-After`. Details in [SOURCES.md](SOURCES.md) |
+| Connectors | `radar/connectors/` | One module per source: Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting, SmartRecruiters (disabled), LinkedIn guest (stands down on robots.txt), read-only IMAP email alerts (`email_alerts.py`, `email_parsers/`). Shared polite HTTP client (`http.py`): per-host rate limit, disk cache, honest user agent, robots.txt checks, back-off honouring `Retry-After`. Details in [SOURCES.md](SOURCES.md) |
 | Pipeline | `radar/pipeline/` | Normalization (company, location, country, zone), de-duplication (`dedupe_key`), closed detection, filters (incl. the `post_graduation` track), diff, manual add by URL |
 | LLM | `radar/llm/` | Provider interface (Groq, Anthropic, offline `fake`), deterministic title relevance (`relevance.py`), scoring, packs and drafts, style checks; token usage stored in `llm_usage` |
 | API | `radar/api/` | JSON API used by the web app (contract in [API.md](API.md)); optional Supabase JWT auth with an allowed email (off by default, see [RUNNING.md](RUNNING.md#self-hosting-on-postgres-optional)) |

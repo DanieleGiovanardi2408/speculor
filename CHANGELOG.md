@@ -8,6 +8,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Connectors for Personio (XML feed), Workable (jobs widget API), Teamtailor (RSS), Recruitee
+  (Careers Site API) and inRecruiting / intervieweb (public announcements feed); robots.txt is
+  checked on every request. Companies in `companies.yaml` can carry a `sector`, stored on the
+  company row (`radar sync-companies`, also run by the pipeline). `scripts/check_boards.py`
+  probes every board and prints counts per sector and ATS.
 - Daily pipeline: collection from Greenhouse, Lever, Ashby and Workday (public CXS endpoint, best
   effort, robots.txt checked); optional read-only IMAP email alerts (one Gmail label, LinkedIn and
   JobTeaser senders only); manual add by URL; normalization and de-duplication; closed-posting
