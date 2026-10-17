@@ -302,3 +302,45 @@ def test_verifier_uses_its_own_model_on_the_scoring_provider(
         assert get_provider("draft").model == "big-model"
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Could you share how the team balances client projects with internal AI research?",
+        "Would you be open to a brief chat?",
+        "I am interested in the Orbis Technology Consulting Intern role in Roma.",
+        "I would welcome a conversation about how my background fits Orbis's AI practice.",
+        "Hi [NOME], I applied for the Orbis Technology Consulting Intern role in Roma.",
+    ],
+)
+def test_questions_and_interest_are_not_claims(sentence: str) -> None:
+    from radar.llm.verify import is_non_claim
+
+    assert is_non_claim(sentence)
+
+
+def test_claims_about_the_candidate_are_kept() -> None:
+    from radar.llm.verify import is_non_claim
+
+    assert not is_non_claim("At Acme I built Playwright scrapers.")
+    assert not is_non_claim("I am finishing my MSc (expected July 2027).")
+
+
+def test_unrecognised_verdicts_trigger_a_repair() -> None:
+    import json
+
+    from radar.facts import build_bank
+    from radar.llm.verify import parse_verifier
+
+    bank = build_bank({"identity": {"name": "Alex Example"}})
+    raw = json.dumps(
+        {
+            "claims": [
+                {"text_id": "cover_letter", "claim": f"I did {i}.", "verdict": "ok"}
+                for i in range(3)
+            ]
+        }
+    )
+    with pytest.raises(ValueError):
+        parse_verifier(raw, bank, ["cover_letter"])

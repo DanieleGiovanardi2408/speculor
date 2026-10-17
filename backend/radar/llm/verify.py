@@ -210,6 +210,24 @@ def precheck(
 # --------------------------------------------------------------------------- verifier output
 
 
+# Sentences that are not claims about the candidate: questions, greetings, interest/politeness.
+_NON_CLAIM = re.compile(
+    r"^\s*(?:hi|hello|dear|ciao|gentile|buongiorno)\b[^.!?]*[,!]?\s*$"
+    r"|\?\s*$"
+    r"|^\s*(?:i am|i'm) (?:interested|curious|keen)\b"
+    r"|^\s*i would (?:welcome|love|be glad|be happy)\b"
+    r"|^\s*(?:would you|could you|can you|may i)\b"
+    r"|^\s*(?:hi|hello|ciao) \[nome\],?\s*i (?:applied|recently applied|sent)\b"
+    r"|^\s*i (?:applied|recently applied) for\b"
+    r"|^\s*(?:sono interessat[oa]|mi piacerebbe|potrebbe|potresti)\b",
+    re.I,
+)
+
+
+def is_non_claim(sentence: str) -> bool:
+    return bool(_NON_CLAIM.search(sentence.strip()))
+
+
 def parse_verifier(raw: str, bank: FactBank, text_ids: Sequence[str]) -> list[dict[str, Any]]:
     """Validate the verifier JSON. Raises ValueError when it is not usable at all."""
     data = extract_json(raw)
@@ -218,20 +236,26 @@ def parse_verifier(raw: str, bank: FactBank, text_ids: Sequence[str]) -> list[di
         raise ValueError("missing 'claims' list")
     known = set(text_ids)
     out: list[dict[str, Any]] = []
+    unrecognized = 0
     for item in items:
         if not isinstance(item, dict):
             continue
         claim = str(item.get("claim") or "").strip()
-        if not claim:
+        if not claim or is_non_claim(claim):
             continue
         tid = str(item.get("text_id") or "").strip()
         if tid not in known:
             tid = text_ids[0] if len(text_ids) == 1 else (tid or "unknown")
         fid_raw = item.get("fact_id")
         fact_id = str(fid_raw).strip().strip("[]") if fid_raw not in (None, "", "null") else None
-        verdict = str(item.get("verdict") or "").strip().lower()
+        verdict = (
+            str(item.get("verdict") or item.get("status") or item.get("result") or "")
+            .strip()
+            .lower()
+        )
         reason: str | None = None
         if verdict not in VERDICTS:
+            unrecognized += 1
             verdict = "unsupported" if "unsupported" in verdict or "not" in verdict else "check"
         if "[CHECK" in claim.upper() and verdict == "supported":
             verdict = "check"
@@ -245,6 +269,8 @@ def parse_verifier(raw: str, bank: FactBank, text_ids: Sequence[str]) -> list[di
             reason = f"id fatto sconosciuto: {fact_id}"
             fact_id = None
         out.append(_claim(tid, claim, fact_id, verdict, "llm", reason))
+    if out and unrecognized * 2 > len(out):
+        raise ValueError("verifier verdicts not recognised")  # -> one repair request
     return out
 
 
