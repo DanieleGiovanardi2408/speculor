@@ -81,7 +81,7 @@ jobteaser-login: ## Log in to JobTeaser (Luiss) by hand in a dedicated Chromium 
 	$(UV) run playwright install chromium
 	$(REAL_ENV) $(UV) run radar jobteaser login
 
-jobteaser-test: ## Check the JobTeaser session: one listing page + one offer page, counts only
+jobteaser-test: ## Check the JobTeaser session: dashboard + one offer page, counts only
 	$(REAL_ENV) $(UV) run radar jobteaser test
 
 build: ## Build the frontend for production (frontend/dist)

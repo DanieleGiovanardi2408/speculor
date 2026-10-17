@@ -132,7 +132,7 @@ alla volta; niente gira nel cloud e la CI non tocca mai dati reali, sessioni o c
 |---|---|---|
 | Board ATS (Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting) | API e feed pubblici delle aziende scelte dall'utente | una volta al giorno, almeno 1 s per host (2 s su Workday), cache HTTP di 12 h |
 | Ricerche salvate LinkedIn (facoltative) | Le ricerche di lavoro dell'utente, tramite linkedin-cli e la sua sessione | una volta al giorno, in sequenza, al massimo 25 chiamate (linkedin-cli limita le chiamate jobs a 30 al giorno) |
-| JobTeaser (facoltativo) | Le offerte del Career Service Luiss, da un profilo browser locale in cui l'utente accede a mano | una volta al giorno, una pagina alla volta, 3-6 s tra le pagine, al massimo 40 offerte |
+| JobTeaser (facoltativo) | Le offerte del Career Service Luiss: le liste solo quando l'utente preme "Salva in Radar" (estensione del browser) su una pagina aperta da lui; poi le singole offerte per la descrizione, da un profilo browser locale in cui l'utente accede a mano | al clic; pagine delle offerte una volta al giorno, una alla volta, 5 s fissi tra le pagine, al massimo 40 offerte |
 | Alert e-mail (facoltativi) | Gli alert di LinkedIn e JobTeaser in una cartella/etichetta `radar` | una volta al giorno, in sola lettura |
 | Contatti (facoltativi) | Risultati di ricerca pubblici per 2-3 persone per annuncio Alta (ricerca web di Groq) | al massimo 5 annunci e 10 chiamate al giorno, tetto rigido di 5 euro al mese |
 
@@ -143,7 +143,11 @@ alla volta; niente gira nel cloud e la CI non tocca mai dati reali, sessioni o c
   esplicita.
 - **robots.txt rispettato anche quando costa risultati** (regole con wildcard comprese). Le
   pagine guest di LinkedIn, l'API di SmartRecruiters, molti feed Personio e le liste di offerte
-  di JobTeaser sono vietati, quindi Radar non li legge. Dettagli in [docs/SOURCES.md](docs/SOURCES.md).
+  di JobTeaser sono vietati, quindi Radar non li legge. Per JobTeaser è l'utente ad aprire le
+  liste nel proprio browser e a premere "Salva in Radar": l'estensione invia solo le offerte già
+  mostrate in quella pagina, senza scorrere, senza paginare e senza trucchi sui tempi; Radar poi
+  apre solo le singole pagine delle offerte, che robots.txt consente. Dettagli in
+  [docs/SOURCES.md](docs/SOURCES.md).
 - **Nessuna risoluzione di CAPTCHA, nessuna elusione anti-bot**: niente proxy, niente trucchi
   sul fingerprint, niente parallelismo, user agent onesto. Un checkpoint, un captcha, un HTTP
   429/999 o una sessione scaduta **mettono in pausa** subito quella fonte, senza ritentare;

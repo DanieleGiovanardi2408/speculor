@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>Salva in Radar: opzioni</title>
+    <style>
+      body { font: 14px/1.5 system-ui, -apple-system, sans-serif; max-width: 520px; margin: 32px auto; padding: 0 16px; color: #111; }
+      label { display: block; font-weight: 600; margin-top: 16px; }
+      input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; margin-top: 4px; }
+      button { margin-top: 20px; padding: 8px 16px; font: inherit; font-weight: 600; }
+      .hint { color: #555; font-size: 13px; margin: 4px 0 0; }
+      #status { margin-top: 12px; min-height: 1.5em; }
+      @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } .hint { color: #aaa; } }
+    </style>
+  </head>
+  <body>
+    <h1>Salva in Radar</h1>
+    <p>Invia a Radar, sul tuo Mac, le offerte già mostrate nella pagina JobTeaser che hai aperto. Nient'altro viene letto.</p>
+    <form id="form">
+      <label for="apiBase">Indirizzo di Radar</label>
+      <input id="apiBase" name="apiBase" type="url" placeholder="http://127.0.0.1:8000" required />
+      <p class="hint">Solo http://127.0.0.1 o http://localhost. Per una porta diversa da 8000 aggiorna anche host_permissions in manifest.json.</p>
+      <label for="token">Token locale</label>
+      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" />
+      <p class="hint">Generalo con <code>radar extension token</code> e incollalo qui. Resta solo in questo browser.</p>
+      <button type="submit">Salva</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+    <script src="options.js"></script>
+  </body>
+</html>

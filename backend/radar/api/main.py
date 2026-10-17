@@ -22,6 +22,8 @@ from radar.api.routes import (
     connectors,
     contacts,
     drafts,
+    ingest,
+    jobteaser,
     packs,
     postings,
     runs,
@@ -71,10 +73,13 @@ def create_app() -> FastAPI:
         runs,
         usage,
         connectors,
+        jobteaser,
     )
     for module in modules:
         api.include_router(module.router)
     app.include_router(api)
+    # The browser extension's endpoint: its own token + Origin check, not the Supabase auth.
+    app.include_router(ingest.router)
 
     if FRONTEND_DIST.is_dir():
         _mount_frontend(app, FRONTEND_DIST)

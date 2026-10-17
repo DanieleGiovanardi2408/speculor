@@ -4,6 +4,7 @@ import type {
   Application,
   ApplicationCreate,
   ConnectorStatus,
+  JobteaserPass,
   Contact,
   ContactCreate,
   ContactPatch,
@@ -59,6 +60,16 @@ function freshDb() {
     runs: clone(runsSeed),
     settings: clone(settingsSeed),
     connectors: {} as ConnectorStatus,
+    jobteaserPass: {
+      last_pass: { at: new Date(Date.now() - 9 * 86_400_000).toISOString(), received: 24, new: 5, updated: 19, ignored: 0 },
+      remind: "stale",
+      links: [
+        { label: "Offerte mirate", url: "https://luiss.jobteaser.com/it/job-offers" },
+        { label: "Offerte dei partner", url: "https://luiss.jobteaser.com/it/job-offers" },
+        { label: "Data scientist", url: "https://luiss.jobteaser.com/it/job-offers?q=data+scientist" },
+      ],
+      extension_configured: true,
+    } as JobteaserPass,
     seq: 1000,
   };
 }
@@ -70,6 +81,11 @@ export function resetMockDb() {
 /** Test/demo helper: mark a source as paused (what the pipeline does on SourcePaused). */
 export function pauseMockConnector(source: string, reason: string, action: string) {
   db.connectors[source] = { paused: true, reason, action, since: new Date().toISOString() };
+}
+
+/** Test/demo helper: replace what GET /api/jobteaser/pass returns. */
+export function setMockJobteaserPass(pass: JobteaserPass) {
+  db.jobteaserPass = pass;
 }
 
 const ok = (body: unknown, status = 200): MockResponse => ({ status, body: clone(body) });
@@ -220,6 +236,8 @@ export async function handleMock(
     }
     return notFound();
   }
+
+  if (method === "GET" && path === "/jobteaser/pass") return ok(db.jobteaserPass);
 
   switch (route) {
     case "GET /health":

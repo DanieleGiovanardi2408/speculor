@@ -185,7 +185,7 @@ a time; nothing runs in the cloud, and CI never touches real data, sessions or k
 |---|---|---|
 | ATS boards (Greenhouse, Lever, Ashby, Workday, Personio, Workable, Teamtailor, Recruitee, inRecruiting) | Public job APIs and feeds of a user-curated company list | once a day, at least 1 s per host (2 s on Workday), 12 h HTTP cache |
 | LinkedIn saved searches (optional) | The user's own job searches through linkedin-cli and the user's own session | once a day, sequential, at most 25 calls (linkedin-cli caps job calls at 30/day) |
-| JobTeaser (optional) | The Luiss career-service offers, through a dedicated local browser profile the user logs into by hand | once a day, one page at a time, 3 to 6 s between pages, at most 40 offer pages |
+| JobTeaser (optional) | The Luiss career-service offers: listing pages only when the user clicks "Salva in Radar" (browser extension) on a page they opened; then single offer pages for the description, through a dedicated local browser profile the user logs into by hand | on click; offer pages once a day, one at a time, a fixed 5 s apart, at most 40 offer pages |
 | Email alerts (optional) | LinkedIn and JobTeaser alert emails in one `radar` folder/label | once a day, read-only |
 | Contacts (optional) | Public search results for 2 or 3 people per Alta posting (Groq web search) | at most 5 postings and 10 calls a day, hard cap 5 EUR a month |
 
@@ -195,7 +195,10 @@ a time; nothing runs in the cloud, and CI never touches real data, sessions or k
   user; LinkedIn messages leave only through `radar send`, one by one, after an explicit `s`.
 - **robots.txt is respected, even when it costs results** (wildcard rules included). LinkedIn's
   guest job pages, SmartRecruiters' posting API, many Personio feeds and JobTeaser's listing
-  pages are disallowed, so Radar does not read them. Details in [docs/SOURCES.md](docs/SOURCES.md).
+  pages are disallowed, so Radar does not read them. For JobTeaser the user opens the listing
+  pages in their own browser and clicks "Salva in Radar": the extension sends only the offers
+  already shown on that page, with no scrolling, no pagination and no timing tricks; Radar then
+  opens only the allowed single offer pages. Details in [docs/SOURCES.md](docs/SOURCES.md).
 - **No CAPTCHA solving, no anti-bot evasion**: no proxies, no fingerprint tricks, no
   parallelism, an honest user agent. A checkpoint, captcha, HTTP 429/999 or an expired session
   **pauses** that source at once, without retrying; *Oggi* shows the pause and what to do, and

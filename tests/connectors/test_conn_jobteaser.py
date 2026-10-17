@@ -1,4 +1,5 @@
-"""JobTeaser connector: parsers, mapping, pause detection, robots, registry (fake browser only)."""
+"""JobTeaser connector: detail parser, mapping, pause detection, robots, fixed pace, daily cap,
+no listing pages, registry (fake browser only)."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from conn_helpers import FIXTURES, load_json, load_text
 
 from radar.config import Settings
 from radar.connectors import jobteaser as jt
+from radar.connectors.base import SourceError
 from radar.connectors.email_parsers.jobteaser import offer_key
 from radar.connectors.http import PoliteClient
 from radar.connectors.registry import ALL_SOURCES, build_connectors
@@ -27,10 +29,8 @@ ROBOTS = load_text("jobteaser/robots.txt")
 ALLOW_ALL = "User-agent: *\nAllow: /\n"
 
 
-def page(rel: str, url: str, status: int = 200, payloads: Any = None) -> jt.Page:
-    return jt.Page(
-        url=url, status=status, html=load_text(f"jobteaser/{rel}"), payloads=payloads or []
-    )
+def page(rel: str, url: str, status: int = 200) -> jt.Page:
+    return jt.Page(url=url, status=status, html=load_text(f"jobteaser/{rel}"))
 
 
 class FakeBrowser:
@@ -55,31 +55,34 @@ class FakeBrowser:
         self.closed = True
 
 
+def cand(offer_id: str, source_list: str = "extension", **kw: Any) -> jt.Candidate:
+    return {"id": offer_id, "url": None, "title": None, "company": None, "location": None,
+            "list": source_list, **kw}  # fmt: skip
+
+
 def connector(
     browser: FakeBrowser,
     *,
     robots: str = ROBOTS,
     cfg: dict[str, Any] | None = None,
-    known: set[str] | None = None,
-    alerts: list[str] | None = None,
+    pending: list[jt.Candidate] | None = None,
     state: Path | None = None,
     sleeps: list[float] | None = None,
+    today: date = date(2026, 10, 19),
 ) -> jt.JobTeaserConnector:
     rec = sleeps if sleeps is not None else []
+    items = list(pending or [])
     return jt.JobTeaserConnector(
         lambda: browser,
         None,
-        cfg
-        if cfg is not None
-        else {
-            "reserved": [{"url": "{base}/{locale}/job-offers?page={page}"}],
-            "searches": ["data scientist"],
-            "max_pages": 2,
-        },
-        ids=lambda: (set(known or ()), list(alerts or [])),
+        cfg or {},
+        candidates=lambda include_alerts: [
+            c for c in items if include_alerts or c["list"] == "extension"
+        ],
         state_path=state,
         sleep=rec.append,
         robots_text=robots,
+        today=lambda: today,
     )
 
 
@@ -143,26 +146,6 @@ def test_offers_from_json_api_payload() -> None:
     assert offers[UUID2]["company"] == "Fiordo Consulting"
     assert offers[UUID2]["closing"] == "2026-11-30"
     assert offers[NUM]["company"] == "Example Ventures"
-    assert jt.json_total(load_json("jobteaser/search_api.json")) == 3
-
-
-def test_parse_listing_prefers_json_then_next_data_then_dom() -> None:
-    api = load_json("jobteaser/search_api.json")
-    offers, how = jt.parse_listing(
-        page("dashboard.html", f"{BASE}/it/job-offers", payloads=[("x", api)])
-    )
-    assert how == "json" and len(offers) == 3
-    offers, how = jt.parse_listing(page("listing_next.html", f"{BASE}/it/job-offers"))
-    assert how == "json" and len(offers) == 3
-    offers, how = jt.parse_listing(page("listing_dom.html", f"{BASE}/it/job-offers"))
-    assert how == "dom"
-    by_id = {o["id"]: o for o in offers}
-    assert set(by_id) == {UUID1, NUM}
-    assert by_id[UUID1]["title"] == "Data Scientist Intern"
-    assert by_id[UUID1]["company"] == "Nebula Analytics"
-    assert by_id[UUID1]["location"] == "Roma, Italia"
-    assert by_id[NUM]["contract"] == "Tirocinio"
-    assert jt.parse_listing(page("dashboard.html", f"{BASE}/it"))[1] == "none"
 
 
 def test_parse_detail_jsonld() -> None:
@@ -240,75 +223,127 @@ def _detail_routes() -> dict[str, jt.Page]:
     }
 
 
-def test_fetch_with_real_robots_skips_listings_and_enriches_alert_offers(tmp_path: Path) -> None:
-    routes = {f"{BASE}/it": page("dashboard.html", f"{BASE}/it"), **_detail_routes()}
-    browser = FakeBrowser(routes)
+def _routes() -> dict[str, jt.Page]:
+    return {f"{BASE}/it": page("dashboard.html", f"{BASE}/it"), **_detail_routes()}
+
+
+def _is_listing(url: str) -> bool:
+    """Anything on the host that is neither the dashboard nor a single offer page."""
+    return url != f"{BASE}/it" and jobteaser_offer_id(url) is None
+
+
+def test_no_listing_code_path_left() -> None:
+    for name in ("parse_listing", "listing_urls", "offers_from_dom", "json_total", "random"):
+        assert not hasattr(jt, name), name
+    conn = connector(FakeBrowser({}))
+    assert not hasattr(conn, "listings") and not hasattr(conn, "collect_listings")
+    assert "payloads" not in jt.Page.__dataclass_fields__  # no intercepted listing JSON
+
+
+def test_fetch_opens_only_dashboard_and_offer_pages(tmp_path: Path) -> None:
+    browser = FakeBrowser(_routes())
     sleeps: list[float] = []
     state = tmp_path / "state.json"
-    conn = connector(browser, alerts=[UUID1, UUID2], state=state, sleeps=sleeps)
+    pending = [cand(UUID1, title="Old card title", location="Roma"), cand(UUID2, "alert")]
+    conn = connector(browser, pending=pending, state=state, sleeps=sleeps)
     out = conn.fetch()
     assert browser.visits[0] == f"{BASE}/it"
-    assert not any("?" in v for v in browser.visits)  # listing URLs never opened
-    assert conn.stats["listing_robots_disallowed"] == 2
+    assert not any(_is_listing(v) for v in browser.visits)
+    assert all(jt.RobotsRules.parse(ROBOTS).allowed(v) for v in browser.visits)
     assert [p.external_id for p in out] == [UUID1]
     p = out[0]
     assert p.source == "jobteaser" and p.company == "Nebula Analytics"
+    assert p.title == "Data Scientist Intern"  # the detail page wins over the card
     assert p.url == f"{BASE}/it/job-offers/{UUID1}-nebula-data-scientist-intern"
     assert p.deadline == date(2026, 11, 15) and "forecasting" in p.raw_text
-    assert p.extra["via"] == "jobteaser" and p.extra["list"] == "alert"
+    assert p.extra["via"] == "jobteaser" and p.extra["list"] == "extension"
     assert conn.exhaustive is False
-    assert json.loads(state.read_text())["closed_ids"] == [UUID2]
-    assert len(sleeps) == len(browser.visits) - 1 and all(3 <= s <= 6 for s in sleeps)
+    saved = json.loads(state.read_text())
+    assert saved["closed_ids"] == [UUID2] and saved["opened"] == 2
     assert browser.closed
-    # next day: the closed offer is not opened again
-    browser2 = FakeBrowser(routes)
-    connector(browser2, alerts=[UUID2], state=state).fetch()
-    assert browser2.visits == [f"{BASE}/it"]
+    # next run: the closed offer is not opened again
+    browser2 = FakeBrowser(_routes())
+    connector(
+        browser2, pending=[cand(UUID2, "alert")], state=state, today=date(2026, 10, 20)
+    ).fetch()
+    assert browser2.visits == []
 
 
-def test_fetch_listing_details_only_for_unknown_ids_with_cap() -> None:
-    api = load_json("jobteaser/search_api.json")
-    listing = jt.Page(
-        url=f"{BASE}/it/job-offers",
-        status=200,
-        html="<html></html>",
-        payloads=[("https://luiss.jobteaser.com/api/job_offers", api)],
-    )
-    routes = {
-        f"{BASE}/it/job-offers?": listing,
-        f"{BASE}/it/job-offers/{NUM}": page("detail_dom.html", f"{BASE}/it/job-offers/{NUM}-ev"),
-        f"{BASE}/it/job-offers/{UUID1}": page(
-            "detail_jsonld.html", f"{BASE}/it/job-offers/{UUID1}"
-        ),
-        f"{BASE}/it": page("dashboard.html", f"{BASE}/it"),
-    }
-    browser = FakeBrowser(routes)
-    cfg = {
-        "reserved": [{"url": "{base}/{locale}/job-offers?page={page}"}],
-        "searches": ["data scientist"],
-        "max_pages": 3,
-        "max_details": 1,
-    }
-    conn = connector(browser, robots=ALLOW_ALL, cfg=cfg, known={UUID2}, alerts=["999999"])
+def test_fixed_pace_without_randomness() -> None:
+    runs = []
+    for _ in range(2):
+        browser = FakeBrowser(_routes())
+        sleeps: list[float] = []
+        connector(browser, pending=[cand(UUID1), cand(NUM), cand(UUID2)], sleeps=sleeps).fetch()
+        assert len(sleeps) == len(browser.visits) - 1 == 3
+        runs.append(sleeps)
+    assert runs[0] == runs[1] == [jt.PAGE_PAUSE_S] * 3
+    assert jt.PAGE_PAUSE_S >= 5
+
+
+def test_daily_cap_holds_across_runs_and_resets_next_day(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    pending = [cand(UUID1), cand(NUM), cand("999999", "alert")]
+    first = FakeBrowser(_routes())
+    conn = connector(first, cfg={"max_details": 2}, pending=pending, state=state)
+    assert len(conn.fetch()) == 2
+    assert conn.stats["detail_skipped_cap"] == 1
+    # same day (e.g. `radar jobteaser details` after the daily run): cap used, browser not started
+    created: list[int] = []
+    again = connector(FakeBrowser(_routes()), cfg={"max_details": 2}, pending=pending, state=state)
+    again.browser_factory = lambda: created.append(1) or FakeBrowser({})  # type: ignore[assignment,func-returns-value]
+    assert again.fetch() == [] and created == []
+    nxt = FakeBrowser(_routes())
+    connector(
+        nxt, cfg={"max_details": 2}, pending=pending, state=state, today=date(2026, 10, 20)
+    ).fetch()
+    assert len([v for v in nxt.visits if v != f"{BASE}/it"]) == 2
+
+
+def test_nothing_pending_does_not_start_the_browser() -> None:
+    def boom() -> FakeBrowser:
+        raise AssertionError("browser started")
+
+    conn = jt.JobTeaserConnector(boom, None, {}, candidates=lambda _a: [], robots_text=ROBOTS)
+    assert conn.fetch() == []
+
+
+def test_alert_offers_only_when_enrich_alerts() -> None:
+    browser = FakeBrowser(_routes())
+    pending = [cand(NUM, "alert")]
+    connector(browser, cfg={"enrich_alerts": False}, pending=pending).fetch()
+    assert browser.visits == []
+
+
+def test_robots_disallowed_offer_and_dashboard_are_never_opened() -> None:
+    robots = f"User-agent: *\nDisallow: /it/job-offers/{NUM}\n"
+    browser = FakeBrowser(_routes())
+    conn = connector(browser, robots=robots, pending=[cand(NUM), cand(UUID1)])
     out = conn.fetch()
-    listing_visits = [v for v in browser.visits if "?" in v]
-    # page 2 returns the same offers -> stop paging; one page per listing
-    assert listing_visits == [
-        f"{BASE}/it/job-offers?page=1",
-        f"{BASE}/it/job-offers?page=2",
-        f"{BASE}/it/job-offers?q=data+scientist&page=1",
-    ]
-    assert conn.stats["listing_offers"] == 3 and conn.stats["listing_known"] == 1
-    assert len(out) == 1 and out[0].external_id == UUID1  # cap 1, known UUID2 never opened
-    assert out[0].extra["list"] == "reserved"
-    assert conn.stats["detail_skipped_cap"] == 2  # NUM + the alert-only id
-    assert not any(UUID2 in v for v in browser.visits)
+    assert [p.external_id for p in out] == [UUID1]
+    assert conn.stats["detail_robots_disallowed"] == 1
+    assert not any(NUM in v for v in browser.visits)
+    closed = FakeBrowser(_routes())
+    with pytest.raises(SourceError):
+        connector(closed, robots="User-agent: *\nDisallow: /\n", pending=[cand(UUID1)]).fetch()
+    assert closed.visits == [] and closed.closed
+
+
+def test_page_without_description_is_not_retried(tmp_path: Path) -> None:
+    empty = jt.Page(url=f"{BASE}/it/job-offers/{NUM}", status=200, html="<h1>Analyst</h1>")
+    routes = {f"{BASE}/it": page("dashboard.html", f"{BASE}/it"), f"{BASE}/it/job-offers/": empty}
+    state = tmp_path / "s.json"
+    out = connector(FakeBrowser(routes), pending=[cand(NUM)], state=state).fetch()
+    assert out[0].title == "Analyst" and out[0].raw_text == ""
+    again = FakeBrowser(routes)
+    connector(again, pending=[cand(NUM)], state=state, today=date(2026, 10, 21)).fetch()
+    assert again.visits == []
 
 
 def test_fetch_pauses_on_expired_session_and_closes_browser() -> None:
     browser = FakeBrowser({}, default=page("login.html", f"{BASE}/it/users/sign_in"))
     with pytest.raises(SourcePaused) as exc:
-        connector(browser, alerts=[UUID1]).fetch()
+        connector(browser, pending=[cand(UUID1)]).fetch()
     assert exc.value.reason == "sessione scaduta"
     assert browser.visits == [f"{BASE}/it"] and browser.closed
 
@@ -320,30 +355,30 @@ def test_fetch_pauses_on_block_mid_run_without_retry() -> None:
     }
     browser = FakeBrowser(routes)
     with pytest.raises(SourcePaused) as exc:
-        connector(browser, alerts=[UUID1, NUM]).fetch()
+        connector(browser, pending=[cand(UUID1), cand(NUM)]).fetch()
     assert exc.value.reason == "captcha o blocco"
     assert len(browser.visits) == 2 and browser.closed  # stopped at the first block
 
 
 def test_smoke_test_reports_counts_only() -> None:
-    routes = {f"{BASE}/it": page("dashboard.html", f"{BASE}/it"), **_detail_routes()}
-    browser = FakeBrowser(routes)
-    report = jt.smoke_test(connector(browser, alerts=[UUID1]), browser)
-    assert report["session"] == "ok"
-    assert "robots.txt disallows" in report["listing"]
+    browser = FakeBrowser(_routes())
+    report = jt.smoke_test(connector(browser, pending=[cand(UUID1)]), browser)
+    assert report["session"] == "ok" and report["detail_pending"] == 1
     assert report["detail_parse"] == "jsonld" and report["detail_has_closing_date"] is True
     assert report["pages_opened"] == 2
+    assert not any(_is_listing(v) for v in browser.visits)
     dumped = json.dumps(report)
     assert "Nebula" not in dumped and "Data Scientist" not in dumped
 
 
-def test_to_raw_requires_title_and_merges_listing() -> None:
+def test_to_raw_requires_title_and_keeps_stored_fields() -> None:
     detail = {"title": None, "description": "", "closing": None, "posted": None}
     assert jt.to_raw(UUID1, f"{BASE}/it/job-offers/{UUID1}", None, detail) is None
-    offer = {"title": "T", "company": "C", "location": "Roma", "list": "search",
-             "closing": "30/11/2026"}  # fmt: skip
-    raw = jt.to_raw(UUID1, f"{BASE}/it/job-offers/{UUID1}", offer, detail)
-    assert raw is not None and raw.company == "C" and raw.deadline == date(2026, 11, 30)
+    known = {"title": "T", "company": "C", "location": "Roma", "list": "extension"}
+    detail = {**detail, "closing": "30/11/2026"}
+    raw = jt.to_raw(UUID1, f"{BASE}/it/job-offers/{UUID1}", known, detail)
+    assert raw is not None and raw.company == "C" and raw.location == "Roma"
+    assert raw.deadline == date(2026, 11, 30) and raw.extra["list"] == "extension"
 
 
 # --------------------------------------------------------------------------- registry / settings
@@ -364,7 +399,7 @@ def test_registry_only_when_profile_exists(client: PoliteClient, tmp_path: Path)
     present = _settings(profile, tmp_path)
     (conn,) = build_connectors(client, {}, settings=present)
     assert isinstance(conn, jt.JobTeaserConnector) and conn.source == "jobteaser"
-    assert conn.listings  # example config loaded (no real config in tests)
+    assert conn.max_details == 40  # example config loaded (no real config in tests)
     assert build_connectors(client, {}, sources=["lever"], settings=present) == []
     off = {"jobteaser": {"enabled": False}}
     assert build_connectors(client, off, settings=present) == []
@@ -384,7 +419,7 @@ def test_default_sources_include_jobteaser_only_with_profile(
     assert routes.default_sources()[-1] == "jobteaser"
 
 
-def test_db_offer_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_db_detail_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from sqlmodel import Session
 
     from radar.db import get_engine, init_db
@@ -397,18 +432,27 @@ def test_db_offer_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
     get_settings.cache_clear()
     engine = init_db(get_engine(url))
+    saved = "20000001"
 
-    def rp(source: str, ext: str, link: str) -> RawPosting:
-        return RawPosting(source=source, external_id=ext, url=link, title="T " + ext, company="C")
+    def rp(source: str, ext: str, link: str, text: str = "") -> RawPosting:
+        return RawPosting(
+            source=source, external_id=ext, url=link, title="T " + ext, company="C", raw_text=text
+        )
 
     with Session(engine) as s:
-        upsert_raw(s, rp("jobteaser", UUID1, f"{BASE}/it/job-offers/{UUID1}"))
-        upsert_raw(s, rp("email", f"jobteaser:{NUM}", f"{BASE}/it/job-offers/{NUM}-x"))
+        # described by an earlier detail fetch: not a candidate, nor its alert copy
+        upsert_raw(s, rp("jobteaser", UUID1, f"{BASE}/it/job-offers/{UUID1}", "x" * 400))
         upsert_raw(s, rp("email", "jobteaser:" + UUID1, f"{BASE}/it/job-offers/{UUID1}-x"))
+        upsert_raw(s, rp("email", f"jobteaser:{NUM}", f"{BASE}/it/job-offers/{NUM}-x"))
+        # saved with the extension (no description yet), plus its alert copy
+        upsert_raw(s, rp("jobteaser", saved, f"{BASE}/it/job-offers/{saved}-y"))
+        upsert_raw(s, rp("email", f"jobteaser:{saved}", f"{BASE}/it/job-offers/{saved}"))
         upsert_raw(s, rp("greenhouse", "1", "https://boards.greenhouse.io/x/jobs/1"))
         s.commit()
-    known, alerts = jt.db_offer_ids()
-    assert known == {UUID1} and alerts == [NUM]
+    got = jt.db_detail_candidates()
+    assert [(c["id"], c["list"]) for c in got] == [(saved, "extension"), (NUM, "alert")]
+    assert got[0]["url"] == f"{BASE}/it/job-offers/{saved}-y" and got[0]["title"] == "T " + saved
+    assert [c["id"] for c in jt.db_detail_candidates(include_alerts=False)] == [saved]
 
 
 # --------------------------------------------------------------------------- probe script
@@ -420,18 +464,16 @@ def test_probe_dumps_structure_without_content() -> None:
     assert spec is not None and spec.loader is not None
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)
-    api = load_json("jobteaser/search_api.json")
-    listing = page("listing_dom.html", f"{BASE}/it/job-offers?page=1&targeted=true")
-    listing.payloads = [(f"{BASE}/api/v2/job_offers/{UUID1}?q=secret", api)]
-    out = probe.page_structure(listing, "listing", BASE)
+    # the probe never opens listing pages; its DOM summary still works on any page
+    card_page = page("listing_dom.html", f"{BASE}/it/job-offers/{UUID1}?targeted=true")
+    out = probe.page_structure(card_page, "detail", BASE)
     dumped = json.dumps(out)
     assert out["page"] == "ok" and out["dom"]["offer_links"] == 2
-    assert out["json_responses"][0]["offers_found"] == 3
-    assert out["json_responses"][0]["url"]["path"] == "/api/v2/job_offers/<id>"
+    assert "json_responses" not in out and "listing_parse" not in out
     assert any(
         "targeted=true" in f and "Offerte mirate" in f for f, _ in out["dom"]["filter_links"]
     )
-    for secret in ("Nebula", "Data Scientist", "Roma", "secret", "Fiordo", UUID1):
+    for secret in ("Nebula", "Data Scientist", "Roma", "Fiordo", UUID1):
         assert secret not in dumped
     detail = probe.page_structure(
         page("detail_jsonld.html", f"{BASE}/it/job-offers/{UUID1}-x"), "detail", BASE

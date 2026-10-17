@@ -170,6 +170,45 @@ make promote-email-sample FILE=private/email_samples/real_linkedin_1.eml
 decoded body), requires the anonymized recipient, and copies the file to `tests/fixtures/email/`.
 It never commits: look at `git diff` and commit yourself.
 
+## Estensione Salva in Radar
+
+JobTeaser's robots.txt disallows its listing and search pages, so Radar never opens them. You
+open them in your own Chrome and click **Salva in Radar**: the extension
+(`extension/jobteaser/`, Manifest V3) sends to the local API only the offers already shown on
+that page (title, company, offer link, location, date if shown). It never scrolls, never goes to
+the next page, never reads cookies. Radar later opens the single offer pages (allowed) to add
+the description: at the next daily run, or now with `radar jobteaser details`.
+
+Install (once):
+
+1. Chrome → `chrome://extensions` → turn on **Developer mode** (top right) → **Load unpacked** →
+   select the folder `extension/jobteaser` of this repository.
+2. In a terminal, in the repo: `uv run radar extension token`. It prints a new token once (only
+   its hash is stored in `data/radar.db`; running it again replaces the old token).
+3. On the extension card → **Details** → **Extension options**: keep the address
+   `http://127.0.0.1:8000`, paste the token, **Salva**.
+4. Optional: pin the extension id with `RADAR_EXTENSION_ID=<id shown on the card>` in `.env`, so
+   the API accepts only this extension.
+
+Use: keep `make dev-real` running (API on :8000). Open a JobTeaser listing ("Offerte mirate",
+"Offerte dei partner", a saved search), let it load, scroll yourself if you want more offers,
+then click the blue **Salva in Radar** button (bottom right). It shows "N offerte inviate, M
+nuove". Every Monday (and whenever the last pass is older than 7 days) *Oggi* shows a card with
+direct links to those pages (`links` in `config/jobteaser_searches.yaml`, see the `.example`)
+and the date and counts of the last pass. If you reach a listing by clicking inside JobTeaser
+and the button is missing, reload the page.
+
+Why it works without CORS settings: the request is made by the extension's service worker, not
+by the JobTeaser page. Chrome exempts extension contexts from CORS and from Private Network
+Access checks for the origins in `host_permissions` (`http://127.0.0.1:8000/*`,
+`http://localhost:8000/*`), so the public JobTeaser page never talks to `127.0.0.1`. The API
+checks `Origin: chrome-extension://...` and the `X-Radar-Token` header instead. If you run the
+API on another port, change both the address in the options and `host_permissions` in
+`manifest.json`, then reload the extension.
+
+Messages: "Radar non risponde" = the API is not running; "Token non valido" = run
+`radar extension token` again and paste the new one.
+
 ## CI (`.github/workflows/ci.yml`)
 
 On every push to `main` and every pull request: backend (ruff, ruff format, mypy strict, pytest

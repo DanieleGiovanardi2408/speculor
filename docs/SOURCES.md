@@ -340,10 +340,45 @@ without anything being fetched from those sites. Setup steps: [RUNNING.md](RUNNI
   manual review, `make promote-email-sample FILE=...` re-runs the personal-data checks and copies
   one file to `tests/fixtures/email/` (it never commits).
 
-## JobTeaser, Luiss career service (`jobteaser.py`, `jobteaser_browser.py`)
+## JobTeaser, Luiss career service (`jobteaser.py`, `jobteaser_browser.py`, extension)
 
-Optional source `jobteaser`. It runs **only on the user's Mac, never in CI or the cloud**, through
-the user's own JobTeaser session kept in a dedicated Chromium profile.
+Optional source `jobteaser`. Everything runs **only on the user's Mac, never in CI or the
+cloud**. `luiss.jobteaser.com/robots.txt` allows single offer pages (`/*/job-offers/<id>`) and
+the dashboard, and `Disallow: /*` covers the listing and search pages. Radar respects that:
+**no automated reading of listing pages, no automated scrolling or pagination, and no timing
+randomization or anything meant to look human**. Offers reach Radar in three ways:
+
+1. **JobTeaser alert emails** (saved-search alerts) through the `email` source (above).
+2. **"Salva in Radar"**, a Chrome extension (`extension/jobteaser/`, Manifest V3). The user opens
+   a listing page in their own browser (e.g. "Offerte mirate", "Offerte dei partner", a saved
+   search) and clicks the button. The content script runs only on listing URLs
+   (`/<locale>/job-offers` with or without a query, not on offer pages) and reads only the offer
+   cards **already rendered** on that page: title, company, offer URL (without query), location,
+   date if shown. It never scrolls, never clicks "next", never fetches other pages, never reads
+   cookies or session data. Permissions: `storage` (API base and token) and `host_permissions`
+   for `http://127.0.0.1:8000/*` and `http://localhost:8000/*` only; no `tabs`, no `cookies`, no
+   `webRequest`. The parser is a pure function (`parser.js`, unit-tested with fictional HTML in
+   `frontend/src/extension/`).
+   The content script hands the offers to the extension's service worker, which POSTs them to
+   `POST /api/ingest/jobteaser`. A request from an extension service worker to an origin listed
+   in `host_permissions` is exempt from CORS and from Chrome's Private Network Access checks
+   (those apply to web pages), so the JobTeaser page never talks to `127.0.0.1` itself and Radar
+   needs no CORS rule for it. The endpoint is **not** behind the Supabase auth (Radar is local):
+   it requires `Origin: chrome-extension://<id>` (Chrome sets it; `RADAR_EXTENSION_ID` pins one
+   id) and `X-Radar-Token` equal to the local token from `radar extension token` (stored as a
+   SHA-256 in the settings table, compared in constant time). Payload: at most 500 offers,
+   strings length-capped; an offer whose URL is not a JobTeaser offer URL, without a title or
+   repeated is ignored. Each offer is upserted as `jobteaser:<offer id>` through the normal
+   store, so it de-duplicates with its alert-email copy on the canonical offer URL; a known
+   offer keeps its stored title and description (only gaps are filled). New postings go through
+   the filters at once; ranking, scoring and packs follow at the next run. The response is
+   `{received, new, updated, ignored}` (new = a job Radar did not know; updated = already known,
+   also from an alert), shown in the page as "N offerte inviate, M nuove". The setting
+   `jobteaser:last_pass` keeps the time and counts (no content). Logs carry counts only.
+3. **Offer pages** (`jobteaser.py`, Playwright, the user's own session). Offers saved with the
+   extension, and offers known only from alert emails or the seed (`enrich_alerts`), have no
+   description yet; the connector opens their single offer pages to add it, plus the closing
+   date. Offers whose stored description is at least 200 characters are skipped.
 
 - **Setup**: `make jobteaser-login` (installs the optional `browser` extra and Chromium, then opens
   a headed window on `https://luiss.jobteaser.com/it/users/sign_in`). The user logs in by hand
@@ -352,39 +387,43 @@ the user's own JobTeaser session kept in a dedicated Chromium profile.
   repo). Cookies are never read, exported or logged. The registry adds the connector, and
   `GET /api/settings` lists the source, only when that directory exists.
   `jobteaser: {enabled: false}` in the companies config turns it off.
-  `make jobteaser-test` checks the session and parses one listing page and one offer page,
-  printing counts only.
+  `make jobteaser-test` checks the session and parses one pending offer page, printing counts
+  only. `radar jobteaser details` reads the pending offer pages now (otherwise the daily run
+  does it), then runs filters, ranking, scoring and packs for that source.
 - **Config**: `config/jobteaser_searches.yaml` (gitignored; the committed
-  `jobteaser_searches.example.yaml` is the fallback) lists the base URL, the reserved-offer
-  listings ("Offerte mirate", "Offerte dei partner"), the search URL template and keywords,
-  `max_pages` (3) and `max_details` (40 offer pages a day).
-- **Politeness**: headless, one tab, one navigation at a time, a 3 to 6 s pause between pages.
-  Every URL is checked against the host's robots.txt **with standard wildcard semantics**
-  (`*`, `$`, longest match; the stdlib parser ignores wildcards) before it is opened.
-  `luiss.jobteaser.com/robots.txt` allows offer pages (`/*/job-offers/<id>`) and the dashboard,
-  but `Disallow: /*` covers the listing/search pages, so **listing URLs are currently skipped**
-  (counted as `listing_robots_disallowed`) and the connector only opens offer pages: those
-  known from JobTeaser alert emails or the seed, to add their description and closing date.
+  `jobteaser_searches.example.yaml` is the fallback): base URL, locale, `max_details` (40 offer
+  pages a day), `enrich_alerts`, and `links` (`offerte_mirate`, `offerte_partner`,
+  `saved_searches`) for the weekly reminder on *Oggi*.
+- **Politeness**: nothing pending, or today's cap used: the browser is not started. Otherwise
+  headless, one tab, one navigation at a time: the dashboard (session check), then offer pages,
+  a **fixed 5 s pause** between pages (no randomness), at most 40 offer pages per day across the
+  daily run and `radar jobteaser details` (counter in `data/jobteaser_state.json`). Every URL,
+  dashboard included, is checked against the host's robots.txt with `RobotsRules` (standard
+  wildcard semantics: `*`, `$`, longest match; the stdlib parser ignores wildcards) before it is
+  opened. Network responses are not intercepted.
 - **Session/block**: a redirect to `/users/sign_in` or to an SSO host raises
   `SourcePaused("jobteaser", "sessione scaduta", ...)`. A Cloudflare challenge, captcha, 403 or
   429 raises `SourcePaused("jobteaser", "captcha o blocco", ...)`. Nothing is solved or retried.
   The source stays paused until `radar connectors resume jobteaser`.
-- **Parsing**: listing offers come from the JSON the web app loads (intercepted XHR/fetch
-  responses from jobteaser hosts, `__NEXT_DATA__`), with the offer links in the DOM as fallback.
-  Offer pages: JSON-LD `JobPosting` first, then JSON, then DOM selectors and a
-  `Scadenza: <date>` line. 404/410 or an "offerta scaduta" marker means closed: the offer isn't
-  returned and its id goes into `data/jobteaser_state.json` (ids only), so it isn't opened again.
+- **Parsing**: offer pages: JSON-LD `JobPosting` first, then embedded JSON (`__NEXT_DATA__`),
+  then DOM selectors and a `Scadenza: <date>` line. 404/410 or an "offerta scaduta" marker means
+  closed: the offer isn't returned and its id goes into `data/jobteaser_state.json` (ids only),
+  so it isn't opened again; a page with no readable description is remembered there too.
 - **Mapping**: `external_id` is the JobTeaser offer id. `url` is built exactly like the email
   parser builds it (`https://luiss.jobteaser.com/it/job-offers/<id>[-<slug>]`).
   `normalize.canonical_url` maps every JobTeaser offer URL (any host, locale or slug) to
-  `https://www.jobteaser.com/en/job-offers/<id>`, so connector, alert and seed rows de-duplicate.
-  Rows stored before that rule are matched by offer id too. `via` is "Career Service Luiss". As a
-  source it ranks like `manual`, above its own alert. Only offers whose page was read in this run
-  are returned, so a stored description is never overwritten with listing text.
-- **Not exhaustive** (`exhaustive = False`): never closes postings by absence.
+  `https://www.jobteaser.com/job-offers/<id>`, so extension, connector, alert and seed rows
+  de-duplicate. `via` is "Career Service Luiss". As a source it ranks like `manual`, above its
+  own alert. A field the offer page lacks falls back to the stored value, so it is never blanked.
+- **Weekly reminder**: `GET /api/jobteaser/pass` returns the last pass, `remind` ("monday" every
+  Monday in Europe/Rome until a pass is done that day, "stale" when the last pass is older than
+  7 days, "never") and the links from the config (only https JobTeaser URLs). *Oggi* shows the
+  card with the links and the last pass date and counts.
+- **Not exhaustive** (`exhaustive = False`, in `NON_EXHAUSTIVE_SOURCES`): never closes postings
+  by absence.
 - **Calibration**: `uv run python scripts/jobteaser_probe.py` (after login) prints the structure
-  of the logged-in pages: URL shapes, JSON key trees, DOM chains, `data-testid`s, filter-link
-  query keys. It prints no content.
+  of the dashboard and one offer page: URL shapes, JSON key trees, DOM chains, `data-testid`s.
+  It prints no content and never opens listing pages.
 
 ## Closed check (`closed.py`)
 

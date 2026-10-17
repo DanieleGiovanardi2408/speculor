@@ -39,6 +39,10 @@ jobteaser_app = typer.Typer(
     no_args_is_help=True, help="JobTeaser (Luiss) browser session, local Mac only."
 )
 app.add_typer(jobteaser_app, name="jobteaser")
+extension_app = typer.Typer(
+    no_args_is_help=True, help='"Salva in Radar" browser extension (JobTeaser listing pages).'
+)
+app.add_typer(extension_app, name="extension")
 
 
 packs_app = typer.Typer(help="Application packs: build, regenerate, verify against the facts.")
@@ -550,7 +554,7 @@ def jobteaser_login() -> None:
 
 @jobteaser_app.command("test")
 def jobteaser_test() -> None:
-    """Check the session and parse one listing page and one offer page (counts only)."""
+    """Check the session and parse one offer page still missing a description (counts only)."""
     import json
 
     from radar.connectors.base import SourceError
@@ -576,6 +580,38 @@ def jobteaser_test() -> None:
         finally:
             browser.close()
     console.print(json.dumps(report, indent=2, ensure_ascii=False))
+
+
+@jobteaser_app.command("details")
+def jobteaser_details(
+    llm: Annotated[bool, typer.Option(help="Score and build packs afterwards")] = True,
+) -> None:
+    """Read now the offer pages of saved offers still missing a description (otherwise the
+    daily run does it): fixed pace, daily cap, robots.txt checked, then filters/scoring."""
+    from radar.pipeline.run import PipelineOptions, run_pipeline
+
+    if get_settings().jobteaser_profile.expanduser().is_dir() is False:
+        console.print("Profilo browser assente: esegui prima `make jobteaser-login`.")
+        raise typer.Exit(1)
+    result = run_pipeline(
+        PipelineOptions(sources=["jobteaser"], llm=llm, check_closed=False, contacts=False)
+    )
+    console.print(result.summary_line())
+
+
+@extension_app.command("token")
+def extension_token() -> None:
+    """Make a new local token for the extension (replaces the old one) and print it once."""
+    from radar.db import session_scope
+    from radar.extension_token import new_token
+
+    with session_scope() as s:
+        token = new_token(s)
+    console.print(
+        'Nuovo token per l\'estensione (incollalo nelle opzioni di "Salva in Radar"; '
+        "non viene più mostrato, il vecchio non vale più):"
+    )
+    print(token)
 
 
 @db_app.command("copy")
