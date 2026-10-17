@@ -78,6 +78,21 @@ def seed(
     console.print(f"Imported: {counts}")
 
 
+@app.command("check-closed")
+def check_closed_cmd(
+    cap: Annotated[int, typer.Option(help="Max URLs to check (least recently checked first)")] = 80,
+) -> None:
+    """URL-check open postings not covered by a board (seed, manual, LinkedIn). Counts only."""
+    from radar.connectors.closed import check_open
+    from radar.connectors.http import PoliteClient
+    from radar.db import session_scope
+    from radar.pipeline.closed import check_open_postings
+
+    with PoliteClient.from_settings() as client, session_scope() as s:
+        counts = check_open_postings(s, lambda url: check_open(client, url), run_id=None, cap=cap)
+    console.print(counts)
+
+
 @app.command("seed-scores-to-notes")
 def seed_scores_to_notes() -> None:
     """Move the tracker's manual priorities into posting notes, so seed postings get the same
