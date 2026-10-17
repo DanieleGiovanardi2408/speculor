@@ -27,6 +27,7 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -331,6 +332,76 @@ def _language_prohibitions(levels: dict[str, str]) -> list[Prohibition]:
     return out
 
 
+_IN_PROGRESS = re.compile(
+    r"\b(?:expected|candidate|in corso|atteso|attesa|present|ongoing)\b", re.I
+)
+_YEAR = re.compile(r"\b(20\d{2})\b")
+_MASTER_KW = (r"m\.?sc", r"master'?s?", r"laurea magistrale", r"magistrale")
+_BACHELOR_KW = (r"b\.?sc", r"bachelor'?s?", r"laurea triennale", r"triennale")
+
+
+def degree_in_progress(item: dict[str, Any], today: date | None = None) -> bool:
+    """An education item not completed yet: "expected"/"candidate" in its text, or an end
+    year after this year."""
+    text = " ".join(_scalar(item.get(k) or "") for k in ("degree", "dates", "notes"))
+    if _IN_PROGRESS.search(text):
+        return True
+    years = [int(y) for y in _YEAR.findall(_scalar(item.get("dates") or ""))]
+    return bool(years) and max(years) > (today or date.today()).year
+
+
+def degree_completed_patterns(degree: str, school: str) -> tuple[str, ...]:
+    """Regexes for sentences that present an unfinished degree as completed ("I hold an MSc",
+    "I graduated from Luiss", "MSc graduate", "ho conseguito la laurea magistrale")."""
+    low = degree.lower()
+    kws = list(_MASTER_KW if re.search(r"m\.?sc|master|magistrale", low) else ())
+    if re.search(r"b\.?sc|bachelor|triennale", low):
+        kws += list(_BACHELOR_KW)
+    first = re.split(r"[\s,]+", school.strip())[0] if school.strip() else ""
+    if len(first) >= 3:
+        kws.append(re.escape(first.lower()))
+    if not kws:
+        kws = [r"degree", r"laurea"]
+    kw = "|".join(kws)
+    det = r"(?:an?|my|the|la|il|una|un)\s+"
+    return (
+        # "I hold an MSc", "holder of a master's", "holding a Luiss MSc"
+        rf"\b(?:hold|holds|holding|holder of)\b[^.\n]{{0,40}}?\b(?:{kw})\b",
+        # "I graduated from Luiss", "graduated with an MSc"
+        rf"\bgraduated\b[^.\n]{{0,60}}?\b(?:{kw})\b",
+        # "completed / earned / obtained / received / awarded an MSc"
+        rf"\b(?:completed|earned|obtained|received|awarded)\s+{det}(?:[\w'-]+\s+){{0,2}}(?:{kw})\b",
+        # "MSc graduate", "Luiss graduate" (not "graduate programme")
+        rf"\b(?:{kw})\s+(?:graduate|holder)\b(?!\s+(?:programme|program|role|scheme|position|track|intern))",
+        # Italian: "ho conseguito la laurea magistrale", "mi sono laureato alla Luiss"
+        rf"\b(?:ho conseguito|conseguita|conseguito)\b[^.\n]{{0,40}}?\b(?:{kw})\b",
+        rf"\b(?:mi sono laureat[oa]|sono laureat[oa]|laureat[oa] (?:in|presso|alla|a))"
+        rf"\b[^.\n]{{0,60}}?\b(?:{kw})\b",
+    )
+
+
+def _degree_prohibitions(education: Any, today: date | None = None) -> list[Prohibition]:
+    out: list[Prohibition] = []
+    if not isinstance(education, list):
+        return out
+    for i, item in enumerate(education):
+        if not isinstance(item, dict) or not degree_in_progress(item, today):
+            continue
+        degree = _scalar(item.get("degree") or "")
+        school = _scalar(item.get("school") or "")
+        ident = _scalar(item.get("id") or str(i))
+        dates = _scalar(item.get("dates") or "")
+        out.append(
+            Prohibition(
+                f"education.{ident}.degree_status",
+                f'{degree} at {school} is not completed yet ({dates}): write "MSc candidate" or '
+                '"finishing my MSc (expected ...)", never "I hold", "I graduated", "MSc graduate".',
+                degree_completed_patterns(degree, school),
+            )
+        )
+    return out
+
+
 # --------------------------------------------------------------------------- build / load
 
 
@@ -377,6 +448,8 @@ def build_bank(data: dict[str, Any], source: str = "inline") -> FactBank:
         warnings.append("identity.name missing")
     levels = _language_levels(identity)
     for p in _language_prohibitions(levels):
+        flat._add_prohibition(p)
+    for p in _degree_prohibitions(data.get("education")):
         flat._add_prohibition(p)
     rules_raw = data.get("drafting_rules") or []
     rules = [_scalar(r) for r in rules_raw if r is not None] if isinstance(rules_raw, list) else []

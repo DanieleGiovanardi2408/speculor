@@ -25,7 +25,7 @@ meta:
 
 identity:
   name: Alex Example
-  headline: Data Scientist. MSc Data Science, Example University
+  headline: Data Scientist. MSc candidate in Data Science, Example University (expected July 2027)
   based_in: Bologna (IT)
   citizenship: EU citizen
   mobility: open to relocation across Europe
@@ -76,7 +76,7 @@ experience:
 education:
   - id: example_msc
     school: Example University
-    degree: MSc in Data Science
+    degree: MSc candidate in Data Science (expected July 2027)
     dates: Sep 2025 - Jul 2027 (expected)
     thesis: Evaluation methods for small language models on Italian text.
     courses: [Machine Learning, Statistics, NLP]
