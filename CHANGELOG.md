@@ -8,6 +8,15 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- "Salva in Radar" Chrome extension (`extension/jobteaser/`, Manifest V3): on a JobTeaser
+  listing page the user opened, one click sends the offers already shown on the page (no
+  scrolling, no pagination, no cookies) to `POST /api/ingest/jobteaser`, which requires the
+  extension Origin and a local token (`radar extension token`, stored hashed), validates the
+  payload, upserts through the normal store (de-duplicated with alert emails) and records
+  `jobteaser:last_pass`. *Oggi* shows a weekly reminder card (Mondays, or when the last pass is
+  older than 7 days) with direct links from `config/jobteaser_searches.yaml`
+  (`GET /api/jobteaser/pass`). `radar jobteaser details` reads pending offer pages now.
+
 - Cross-source de-duplication: the same job seen on the company board, JobTeaser, LinkedIn and
   email alerts is one posting with all its sources (`Posting.sources`), stricter canonical URLs,
   a fuzzy company/title/city match, stable primary ids, best-link and richer-description
@@ -77,6 +86,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Estimated cost per call in `llm_usage.est_cost_eur`; hard monthly cap
   (`RADAR_CONTACTS_MONTHLY_CAP_EUR`, default 5) and daily call cap. Never logs into LinkedIn,
   never runs linkedin-cli, never sends anything.
+
+### Changed
+
+- JobTeaser connector: the listing-page code path is gone (no listing fetch, no pagination, no
+  intercepted listing JSON, no randomized pauses). It opens only the dashboard and single offer
+  pages still missing a description, at a fixed 5 s pace, at most 40 per day across runs, each
+  URL checked against robots.txt; the browser is not started when nothing is pending.
 
 ### Removed
 

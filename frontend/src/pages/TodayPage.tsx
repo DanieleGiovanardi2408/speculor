@@ -5,6 +5,7 @@ import { Badge, PriorityBadge, type Tone } from "../components/Badge";
 import { ConnectorPauseBanner } from "../components/ConnectorPauseBanner";
 import { GoalEditor, WeeklyProgress } from "../components/GoalEditor";
 import { Icon, type IconName } from "../components/Icon";
+import { JobteaserPassCard } from "../components/JobteaserPassCard";
 import { LastRunCard } from "../components/LastRunCard";
 import { PageHeader } from "../components/PageHeader";
 import { usePostingActions } from "../components/PostingActions";
@@ -93,6 +94,9 @@ export function TodayPage() {
       <PageHeader title="Oggi" subtitle={todayLabel} />
       <div className="mb-4 empty:hidden">
         <ConnectorPauseBanner />
+      </div>
+      <div className="mb-4 empty:hidden">
+        <JobteaserPassCard />
       </div>
       {isPending ? (
         <div className="space-y-4">

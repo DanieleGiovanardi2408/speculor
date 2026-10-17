@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Salva in Radar (JobTeaser)",
+  "version": "0.1.0",
+  "description": "Sends the JobTeaser offers already shown on the listing page you opened to your local Radar. Nothing else is read.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8000/*", "http://localhost:8000/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://*.jobteaser.com/*/job-offers*", "https://*.jobteaser.com/job-offers*"],
+      "exclude_matches": ["https://*.jobteaser.com/*/job-offers/*", "https://*.jobteaser.com/job-offers/*"],
+      "js": ["parser.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

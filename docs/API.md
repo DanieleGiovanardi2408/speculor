@@ -138,6 +138,8 @@ interface SettingsOut { weekly_goal: number; sources_enabled: Record<string, boo
 | GET | /api/runs | query `limit` (default 10) | RunSummary[] |
 | GET | /api/runs/{id} | | RunDetail (404 unknown id) |
 | GET | /api/usage | query `days` (1-90, default 7; today included, Europe/Amsterdam days) | Usage (sums of `llm_usage` rows; counts only) |
+| GET | /api/jobteaser/pass | | `{last_pass: {at, received, new, updated, ignored} \| null, remind: "monday"\|"stale"\|"never"\|null, links: [{label, url}], extension_configured}` (weekly JobTeaser pass card on Oggi) |
+| POST | /api/ingest/jobteaser | `{offers: [{title, company?, url, location?, date?}]}` (max 500). **Not behind the Supabase auth**: needs `Origin: chrome-extension://<id>` (403 otherwise; `RADAR_EXTENSION_ID` pins one id) and `X-Radar-Token` (401 when missing or wrong; `radar extension token`). Called only by the "Salva in Radar" extension | `{received, new, updated, ignored}` |
 
 Rules: no route ever submits an application or sends a message. `followup_due` = stage
 `Inviata`, not responded, `date_sent` 14+ days ago. "Since yesterday" = change events in the

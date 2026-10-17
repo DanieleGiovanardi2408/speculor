@@ -14,6 +14,7 @@ import type {
   Company,
   CompanyPatch,
   ConnectorStatus,
+  JobteaserPass,
   Contact,
   ContactCreate,
   ContactPatch,
@@ -54,6 +55,7 @@ export const qk = {
   run: (id: number) => ["run", id] as const,
   usage: (days: number) => ["usage", days] as const,
   connectorStatus: ["connectors", "status"] as const,
+  jobteaserPass: ["jobteaser", "pass"] as const,
 };
 
 // ---------- Queries ----------
@@ -124,6 +126,12 @@ export const useConnectorStatus = () =>
   useQuery({
     queryKey: qk.connectorStatus,
     queryFn: ({ signal }) => api.get<ConnectorStatus>("/api/connectors/status", undefined, signal),
+  });
+
+export const useJobteaserPass = () =>
+  useQuery({
+    queryKey: qk.jobteaserPass,
+    queryFn: ({ signal }) => api.get<JobteaserPass>("/api/jobteaser/pass", undefined, signal),
   });
 
 export const useRuns = (limit = 10) =>

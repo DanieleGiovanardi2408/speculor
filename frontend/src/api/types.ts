@@ -323,6 +323,26 @@ export interface ConnectorPause {
 /** GET /api/connectors/status: source name -> pause state (only paused sources are present). */
 export type ConnectorStatus = Record<string, ConnectorPause>;
 
+/** GET /api/jobteaser/pass: the weekly JobTeaser pass card ("Salva in Radar" extension). */
+export interface JobteaserLastPass {
+  /** ISO timestamp of the last import from the extension. */
+  at: string;
+  received: number;
+  new: number;
+  updated: number;
+  ignored: number;
+}
+
+export interface JobteaserPass {
+  last_pass: JobteaserLastPass | null;
+  /** Why to show the reminder: every Monday, last pass older than 7 days, or never; null = no card. */
+  remind: "monday" | "stale" | "never" | null;
+  /** "Offerte mirate", "Offerte dei partner", then the saved searches (from config/jobteaser_searches.yaml). */
+  links: { label: string; url: string }[];
+  /** A local token exists (`radar extension token`). */
+  extension_configured: boolean;
+}
+
 // ---- Request bodies / query params (derived from the Routes table) ----
 
 export type PostingSort = "priority" | "deadline" | "company" | "first_seen" | "similarity";
