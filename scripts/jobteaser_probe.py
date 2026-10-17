@@ -3,22 +3,21 @@
 
 Usage (after ``make jobteaser-login``)::
 
-    uv run python scripts/jobteaser_probe.py [--listing URL ...] [--offer-id ID] [--headed]
+    uv run python scripts/jobteaser_probe.py [--offer-id ID] [--headed]
         [--out data/jobteaser_probe.json]
 
-It opens, one at a time with a pause of a few seconds: the dashboard, page 1 of every listing
-in ``config/jobteaser_searches.yaml`` (or ``--listing`` URLs; each checked against robots.txt
-first, disallowed ones are NOT opened) and one offer page (``--offer-id`` or the newest offer
-known from alert emails). For each page it prints only structure, never content:
+It opens, one at a time with a fixed pause of a few seconds: the dashboard and one offer page
+(``--offer-id`` or the newest stored offer still missing a description), each checked against
+robots.txt first. Listing and search pages are never opened (robots.txt disallows them; the
+"Salva in Radar" extension reads those in the user's own browser). For each page it prints only
+structure, never content:
 
 * page kind (ok / login / block), HTTP status, URL shape (ids masked, query KEYS only);
-* intercepted JSON responses: URL shape, key tree (keys, types, list lengths), how many
-  offer-like objects ``offers_from_json`` finds, the reported total;
 * embedded JSON (``__NEXT_DATA__``, ``application/json``, JSON-LD ``@type`` values);
 * DOM: offer-link count, the tag/class/data-testid chain around offer links, ``data-testid``
   frequencies, form field names, filter links (query keys and short identifier values, plus the
   link label only when it is a filter label such as "mirate"/"partner"/"riservat");
-* what the connector parsers extract (counts / parse mode / description length only).
+* what the detail parser extracts (parse mode / description length only).
 
 The output contains no titles, companies, descriptions, names, cookies or tokens. Still,
 review it before sharing.
@@ -28,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import re
 import sys
 import time
@@ -150,15 +148,6 @@ def page_structure(page: jt.Page, kind: str, base_url: str) -> dict[str, Any]:
         out["page"] = "block"
         return out
     out["page"] = "ok"
-    out["json_responses"] = [
-        {
-            "url": url_shape(url),
-            "offers_found": len(jt.offers_from_json(body)),
-            "total": jt.json_total(body),
-            "keys": key_tree(body),
-        }
-        for url, body in page.payloads
-    ]
     embedded = jt.embedded_json(page.html)
     out["embedded_json"] = [
         {
@@ -169,8 +158,6 @@ def page_structure(page: jt.Page, kind: str, base_url: str) -> dict[str, Any]:
         for b in embedded
     ]
     out["dom"] = dom_structure(page.html, base_url)
-    offers, how = jt.parse_listing(page, base_url)
-    out["listing_parse"] = {"how": how, "offers": len(offers)}
     if kind == "detail":
         d = jt.parse_detail(page)
         out["detail_parse"] = {
@@ -187,7 +174,6 @@ def page_structure(page: jt.Page, kind: str, base_url: str) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--listing", action="append", default=[], help="listing URL (page 1)")
     parser.add_argument("--offer-id", default=None)
     parser.add_argument("--headed", action="store_true", help="show the browser window")
     parser.add_argument("--out", type=Path, default=None, help="also write the JSON here")
@@ -207,14 +193,12 @@ def main() -> int:
             lambda: PlaywrightBrowser(jt.profile_dir(settings)), client, cfg
         )
         robots = conn.robots()
-        targets: list[tuple[str, str]] = [("dashboard", f"{conn.base_url}/{conn.locale}")]
-        listings = args.listing or [jt._page_url(t, 1) for _k, t in conn.listings]
-        targets += [("listing", u) for u in dict.fromkeys(listings)]
+        targets: list[tuple[str, str]] = [("dashboard", conn.dashboard_url())]
         offer_id = args.offer_id
         if offer_id is None:
             try:
-                _known, alert_ids = jt.db_offer_ids()
-                offer_id = alert_ids[0] if alert_ids else None
+                pending = jt.db_detail_candidates()
+                offer_id = pending[0]["id"] if pending else None
             except Exception:
                 offer_id = None
         if offer_id:
@@ -230,7 +214,7 @@ def main() -> int:
                     )
                     continue
                 if i:
-                    time.sleep(random.uniform(3.0, 6.0))
+                    time.sleep(jt.PAGE_PAUSE_S)
                 page = browser.visit(url)
                 entry = page_structure(page, kind, conn.base_url)
                 report.append(entry)

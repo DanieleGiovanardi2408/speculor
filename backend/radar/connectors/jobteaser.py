@@ -1,57 +1,55 @@
-"""JobTeaser (Luiss career service) through the user's own logged-in browser profile.
+"""JobTeaser (Luiss career service): offer detail pages through the user's own browser profile.
 
 Local Mac only, never CI. The session lives only in a dedicated Chromium profile
 (``RADAR_JOBTEASER_PROFILE``) created by ``make jobteaser-login``; cookies are never read,
 exported or logged. The browser layer (:mod:`radar.connectors.jobteaser_browser`, Playwright,
 optional ``browser`` extra) is injected, so everything here is tested with fake pages.
 
-One fetch, one page at a time, a pause of a few seconds between pages, no parallel tabs:
+Listing and search pages are disallowed by the host's robots.txt, so this connector never opens
+them, never paginates and never scrolls. Offers reach Radar from two other paths: JobTeaser
+alert emails (``email`` source) and the "Salva in Radar" browser extension, which the user
+clicks on a listing page they opened themselves (``POST /api/ingest/jobteaser``, see
+:mod:`radar.pipeline.jobteaser_ingest`). Those offers have no description yet; this connector
+adds it, one page at a time, with a fixed pause of :data:`PAGE_PAUSE_S` seconds (no
+randomization) and at most ``max_details`` pages per day:
 
-1. Session check: ``<base>/<locale>`` (the dashboard). A redirect to ``/users/sign_in`` or to
-   an SSO host means the session expired -> :class:`SourcePaused`. A captcha/challenge/block
-   page anywhere -> :class:`SourcePaused` too (never solved, never retried).
-2. Listing pages (reserved filters + the user's searches, a few pages each), each checked
-   against the host's robots.txt with standard wildcard semantics BEFORE it is opened. Offers
-   are read from the JSON the web app loads (intercepted responses / ``__NEXT_DATA__``), with
-   the offer links in the DOM as fallback.
-3. Detail pages, at most ``max_details`` per day, only for offers whose id is not already
-   stored by this source: listing offers first, then offers known only from email alerts or
-   the seed (to add their description). JSON-LD ``JobPosting`` first, then JSON, then the DOM.
-   404/410 or an "expired" marker = closed: not returned, remembered in a small state file.
+1. Nothing pending (or today's cap used): the browser is not started at all.
+2. Session check: ``<base>/<locale>`` (the dashboard, allowed by robots.txt). A redirect to
+   ``/users/sign_in`` or to an SSO host means the session expired -> :class:`SourcePaused`. A
+   captcha/challenge/block page anywhere -> :class:`SourcePaused` too (never solved, never
+   retried).
+3. Single offer pages (``/<locale>/job-offers/<id>``), each checked against robots.txt with
+   :class:`RobotsRules` before it is opened: offers saved with the extension first, then offers
+   known only from alert emails or the seed. JSON-LD ``JobPosting`` first, then embedded JSON,
+   then the DOM. 404/410 or an "expired" marker = closed: not returned, remembered in a small
+   state file (ids and counts only).
 
-Only offers whose detail page was read this run are returned, so a known offer's stored
-description is never overwritten with listing text. Not exhaustive: never closes by absence.
-Logs carry counts only.
+Not exhaustive: never closes by absence. Logs carry counts only.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import random
 import re
 import time
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
-from urllib.parse import quote_plus, urlsplit
+from urllib.parse import urlsplit
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
-from radar.connectors.email_parsers.common import (
-    container_lines,
-    find_cards,
-    lines_after,
-    pick_title,
-)
-from radar.connectors.email_parsers.jobteaser import _fields, offer_key
+from radar.connectors.base import SourceError
+from radar.connectors.email_parsers.jobteaser import offer_key
 from radar.connectors.http import PoliteClient, html_to_text, parse_date, parse_datetime
 from radar.connectors.robots import RobotsRules
 from radar.connectors.status import SourcePaused
 from radar.pipeline.normalize import jobteaser_offer_id
 from radar.schemas import RawPosting
+from radar.timeutil import today as utc_today
 
 if TYPE_CHECKING:
     from radar.config import Settings
@@ -112,8 +110,6 @@ class Page:
     url: str  # final URL after redirects
     status: int | None
     html: str
-    #: JSON bodies of responses from jobteaser hosts loaded by the page: (url, parsed body)
-    payloads: list[tuple[str, Any]] = field(default_factory=list)
 
 
 class Browser(Protocol):
@@ -166,10 +162,8 @@ def is_closed_page(page: Page) -> bool:
     return any(marker in text for marker in CLOSED_MARKERS)
 
 
-# --------------------------------------------------------------------------- robots.txt
-
-
 # --------------------------------------------------------------------------- offer extraction
+# (detail pages: JSON-LD, embedded JSON such as ``__NEXT_DATA__``, then the DOM)
 
 _ID_RE = re.compile(
     r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{3,})$", re.I
@@ -246,16 +240,6 @@ _CLOSING_KEYS = (
     "validThrough",
     "deadline",
     "end_publication_date",
-)
-_TOTAL_KEYS = (
-    "total",
-    "total_count",
-    "totalCount",
-    "nb_hits",
-    "nbHits",
-    "total_hits",
-    "totalHits",
-    "count",
 )
 
 
@@ -350,16 +334,6 @@ def offers_from_json(data: Any) -> list[dict[str, Any]]:
     return list(out.values())
 
 
-def json_total(data: Any) -> int | None:
-    """Total hit count of a search response, if it says so."""
-    for obj in walk_json(data):
-        for k in _TOTAL_KEYS:
-            value = obj.get(k)
-            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-                return value
-    return None
-
-
 def embedded_json(html: str) -> list[Any]:
     """``__NEXT_DATA__``/``application/json`` script blobs and JSON-LD blocks of a page."""
     tree = LexborHTMLParser(html)
@@ -384,53 +358,6 @@ def offer_href_key(href: str | None, base_url: str = DEFAULT_BASE_URL) -> tuple[
     if href.startswith("/"):
         href = f"{base_url.rstrip('/')}{href}"
     return offer_key(href)
-
-
-def offers_from_dom(html: str, base_url: str = DEFAULT_BASE_URL) -> list[dict[str, Any]]:
-    """Fallback: offer links in the rendered DOM, grouped into cards like the email parser."""
-    tree = LexborHTMLParser(html)
-    for node in tree.css("head, style, script, noscript, template, svg"):
-        node.decompose()
-
-    def key_of(href: str) -> tuple[str, str] | None:
-        return offer_href_key(href, base_url)
-
-    out: list[dict[str, Any]] = []
-    for card in find_cards(tree, key_of):
-        lines = container_lines(card.container)
-        title = pick_title(card, lines)
-        if not title:
-            continue
-        company, location, contract, _meta = _fields(lines_after(title, lines))
-        out.append(
-            {
-                "id": card.key,
-                "title": title,
-                "company": company,
-                "location": location,
-                "contract": contract,
-                "href": card.url,
-                "description": "",
-                "posted": None,
-                "closing": None,
-            }
-        )
-    return out
-
-
-def parse_listing(page: Page, base_url: str = DEFAULT_BASE_URL) -> tuple[list[dict[str, Any]], str]:
-    """(offers, how) for a listing page; how = "json" | "dom" | "none"."""
-    found: dict[str, dict[str, Any]] = {}
-    for _url, body in page.payloads:
-        for offer in offers_from_json(body):
-            found.setdefault(offer["id"], offer)
-    for blob in embedded_json(page.html):
-        for offer in offers_from_json(blob):
-            found.setdefault(offer["id"], offer)
-    if found:
-        return list(found.values()), "json"
-    dom = offers_from_dom(page.html, base_url)
-    return dom, "dom" if dom else "none"
 
 
 _DATE_LABEL_RE = re.compile(
@@ -527,12 +454,7 @@ def parse_detail(page: Page) -> dict[str, Any]:
             how="jsonld",
         )
     if not out["description"]:
-        json_offers = [
-            o
-            for body in [*(b for _u, b in page.payloads), *blobs]
-            for o in offers_from_json(body)
-            if o["description"]
-        ]
+        json_offers = [o for body in blobs for o in offers_from_json(body) if o["description"]]
         if json_offers:
             best = max(json_offers, key=lambda o: len(o["description"]))
             for k in ("title", "company", "location", "contract", "posted", "closing"):
@@ -559,92 +481,121 @@ def parse_detail(page: Page) -> dict[str, Any]:
     return out
 
 
-# --------------------------------------------------------------------------- config
-
-
-def listing_urls(cfg: dict[str, Any], base_url: str, locale: str) -> list[tuple[str, str]]:
-    """[(kind, url template with {page})] from config: reserved filters, then searches."""
-    out: list[tuple[str, str]] = []
-    fmt = {"base": base_url.rstrip("/"), "locale": locale}
-    for entry in cfg.get("reserved") or []:
-        url = entry.get("url") if isinstance(entry, dict) else entry
-        if isinstance(url, str) and url.strip():
-            out.append(
-                ("reserved", url.strip().replace("{base}", fmt["base"]).replace("{locale}", locale))
-            )
-    template = str(cfg.get("search_url") or "{base}/{locale}/job-offers?q={q}&page={page}")
-    for kw in cfg.get("searches") or []:
-        if isinstance(kw, str) and kw.strip():
-            url = template.replace("{base}", fmt["base"]).replace("{locale}", locale)
-            out.append(("search", url.replace("{q}", quote_plus(kw.strip()))))
-    return out
-
-
-def _page_url(template: str, page: int) -> str:
-    return template.replace("{page}", str(page))
-
-
 # --------------------------------------------------------------------------- state file
 
 
-class ClosedState:
-    """Ids of offers whose detail page said closed/404 (ids only, no content)."""
+class DetailState:
+    """Small local state file (ids and counts only, no content): offers whose detail page said
+    closed/404, offers whose page had no readable description (not retried), and how many
+    detail pages were opened today (the daily cap holds across the daily run and
+    ``radar jobteaser details``)."""
 
     def __init__(self, path: Path | None) -> None:
         self.path = path
-        self.ids: set[str] = set()
+        self.closed: set[str] = set()
+        self.no_description: set[str] = set()
+        self.day: str | None = None
+        self.opened = 0
         if path is not None and path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                self.ids = {str(x) for x in data.get("closed_ids", [])}
-            except (ValueError, OSError, AttributeError):
-                self.ids = set()
+                self.closed = {str(x) for x in data.get("closed_ids", [])}
+                self.no_description = {str(x) for x in data.get("no_description_ids", [])}
+                self.day = str(data["day"]) if data.get("day") else None
+                self.opened = int(data.get("opened", 0))
+            except (ValueError, OSError, AttributeError, TypeError):
+                self.closed, self.no_description, self.day, self.opened = set(), set(), None, 0
 
-    def add(self, offer_id: str) -> None:
-        self.ids.add(offer_id)
+    def skip(self, offer_id: str) -> bool:
+        return offer_id in self.closed or offer_id in self.no_description
+
+    def opened_on(self, day: date) -> int:
+        return self.opened if self.day == day.isoformat() else 0
+
+    def count_open(self, day: date) -> None:
+        self.opened = self.opened_on(day) + 1
+        self.day = day.isoformat()
 
     def save(self) -> None:
         if self.path is None:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        ids = sorted(self.ids)[-5000:]
-        self.path.write_text(json.dumps({"closed_ids": ids}), encoding="utf-8")
+        data = {
+            "closed_ids": sorted(self.closed)[-5000:],
+            "no_description_ids": sorted(self.no_description)[-5000:],
+            "day": self.day,
+            "opened": self.opened,
+        }
+        self.path.write_text(json.dumps(data), encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- connector
 
-IdsProvider = Callable[[], tuple[set[str], list[str]]]
+#: A stored offer that still lacks a description: {"id", "url", "title", "company",
+#: "location", "list"} ("list" = "extension" for offers saved with the browser extension,
+#: "alert" for offers known only from alert emails or the seed).
+Candidate = dict[str, Any]
+CandidatesProvider = Callable[[bool], list[Candidate]]
+
+#: A stored description shorter than this (chars) counts as missing (alert snippets).
+MIN_DESCRIPTION = 200
+#: Fixed pause between two page loads (seconds). Deliberately constant: no randomization.
+PAGE_PAUSE_S = 5.0
+#: Detail pages opened per day, at most.
+DEFAULT_MAX_DETAILS = 40
 
 
-def db_offer_ids() -> tuple[set[str], list[str]]:
-    """(ids already stored by this source, open offers known only from alerts/seed, newest
-    first) from the configured database."""
+def db_detail_candidates(include_alerts: bool = True) -> list[Candidate]:
+    """Open JobTeaser offers whose description is still missing, from the configured database:
+    offers saved with the extension first, then (``include_alerts``) offers known only from
+    alert emails or the seed; newest first within each group."""
     from sqlmodel import Session, col, select
 
     from radar.config import get_settings
     from radar.db import get_engine
     from radar.models import Posting
 
-    known: set[str] = set()
-    candidates: list[str] = []
     with Session(get_engine(get_settings().database_url)) as session:
-        rows = session.exec(
-            select(Posting.source, Posting.url, Posting.status)
+        postings = session.exec(
+            select(Posting)
             .where(col(Posting.url).contains("jobteaser.com"))
             .order_by(col(Posting.first_seen).desc())
         ).all()
-    for source, url, status in rows:
+        rows = [
+            (p.source, p.url, p.status, p.raw_text, p.title, p.company_name, p.location)
+            for p in postings
+        ]
+    described: set[str] = set()
+    own: dict[str, Candidate] = {}
+    other: dict[str, Candidate] = {}
+    for source, url, status, raw_text, title, company, location in rows:
         offer_id = jobteaser_offer_id(url or "")
         if not offer_id:
             continue
-        if source == SOURCE:
-            known.add(offer_id)
-        elif status == "open" and offer_id not in candidates:
-            candidates.append(offer_id)
-    return known, [c for c in candidates if c not in known]
+        if source == SOURCE and len((raw_text or "").strip()) >= MIN_DESCRIPTION:
+            described.add(offer_id)
+        if status != "open":
+            continue
+        cand = {
+            "id": offer_id,
+            "url": url,
+            "title": title,
+            "company": company,
+            "location": location,
+            "list": "extension" if source == SOURCE else "alert",
+        }
+        (own if source == SOURCE else other).setdefault(offer_id, cand)
+    out = [c for k, c in own.items() if k not in described]
+    if include_alerts:
+        out += [c for k, c in other.items() if k not in described and k not in own]
+    return out
 
 
 class JobTeaserConnector:
+    """Opens only the dashboard (session check) and single offer pages, both allowed by the
+    host's robots.txt, one at a time with a fixed pause. Listing pages are never opened: the
+    user saves them from the browser with the "Salva in Radar" extension."""
+
     source = SOURCE
     label = "jobteaser (career service)"
     exhaustive = False
@@ -655,25 +606,24 @@ class JobTeaserConnector:
         client: PoliteClient | None,
         cfg: dict[str, Any] | None = None,
         *,
-        ids: IdsProvider = db_offer_ids,
+        candidates: CandidatesProvider = db_detail_candidates,
         state_path: Path | None = None,
         sleep: Callable[[float], None] = time.sleep,
-        pause_range: tuple[float, float] = (3.0, 6.0),
         robots_text: str | None = None,
+        today: Callable[[], date] = utc_today,
     ) -> None:
         cfg = cfg or {}
         self.browser_factory = browser_factory
         self.client = client
         self.base_url = str(cfg.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
         self.locale = str(cfg.get("locale") or DEFAULT_LOCALE)
-        self.max_pages = int(cfg.get("max_pages", 3))
-        self.max_details = int(cfg.get("max_details", 40))
-        self.enrich_known = bool(cfg.get("enrich_alerts", True))
-        self.listings = listing_urls(cfg, self.base_url, self.locale)
-        self.ids = ids
-        self.state = ClosedState(state_path)
+        self.max_details = int(cfg.get("max_details", DEFAULT_MAX_DETAILS))
+        self.enrich_alerts = bool(cfg.get("enrich_alerts", True))
+        self.candidates = candidates
+        self.state = DetailState(state_path)
         self.sleep = sleep
-        self.pause_range = pause_range
+        self.pause = PAGE_PAUSE_S
+        self.today = today
         self._robots_text = robots_text
         self._robots: RobotsRules | None = None
         self._visits = 0
@@ -698,7 +648,7 @@ class JobTeaserConnector:
 
     def _visit(self, browser: Browser, url: str) -> Page:
         if self._visits:
-            self.sleep(random.uniform(*self.pause_range))
+            self.sleep(self.pause)
         self._visits += 1
         page = browser.visit(url)
         check_page(page, self.base_url)
@@ -706,6 +656,9 @@ class JobTeaserConnector:
 
     def _count(self, key: str, n: int = 1) -> None:
         self.stats[key] = self.stats.get(key, 0) + n
+
+    def dashboard_url(self) -> str:
+        return f"{self.base_url}/{self.locale}"
 
     def offer_url(self, offer_id: str, href: str | None = None) -> str:
         if href:
@@ -718,108 +671,96 @@ class JobTeaserConnector:
     # -- main
     def session_ok(self, browser: Browser) -> Page:
         """Open the dashboard; raises SourcePaused if the session expired or we're blocked."""
-        return self._visit(browser, f"{self.base_url}/{self.locale}")
+        url = self.dashboard_url()
+        if not self.robots().allowed(url):
+            raise SourceError("jobteaser: robots.txt disallows the dashboard; nothing opened")
+        return self._visit(browser, url)
 
-    def collect_listings(
-        self, browser: Browser, known: set[str], max_pages: int | None = None
-    ) -> dict[str, dict[str, Any]]:
-        found: dict[str, dict[str, Any]] = {}
-        robots = self.robots()
-        for kind, template in self.listings:
-            for n in range(1, (max_pages or self.max_pages) + 1):
-                url = _page_url(template, n)
-                if not robots.allowed(url):
-                    self._count("listing_robots_disallowed")
-                    break
-                page = self._visit(browser, url)
-                offers, how = parse_listing(page, self.base_url)
-                self._count(f"listing_pages_{how}")
-                fresh = 0
-                for offer in offers:
-                    offer["list"] = kind
-                    if offer["id"] not in found:
-                        found[offer["id"]] = offer
-                        fresh += 1
-                if not offers or fresh == 0 or "{page}" not in template:
-                    break
-        self._count("listing_offers", len(found))
-        self._count("listing_known", sum(1 for k in found if k in known))
-        return found
+    def pending(self) -> list[Candidate]:
+        return [c for c in self.candidates(self.enrich_alerts) if not self.state.skip(c["id"])]
 
     def fetch(self) -> list[RawPosting]:
-        known, alert_ids = self.ids()
         self.stats = {}
         self._visits = 0
-        browser = self.browser_factory()
+        todo = self.pending()
+        day = self.today()
+        budget = max(0, self.max_details - self.state.opened_on(day))
+        self._count("detail_pending", len(todo))
         out: list[RawPosting] = []
+        if not todo or budget == 0:
+            # nothing to read (or today's cap is used up): the browser is not even started
+            self._count("detail_skipped_cap", len(todo))
+            self._log(out)
+            return out
+        robots = self.robots()
+        browser = self.browser_factory()
+        done = 0
         try:
             self.session_ok(browser)
-            listed = self.collect_listings(browser, known)
-            todo: list[tuple[str, dict[str, Any] | None]] = [
-                (oid, offer)
-                for oid, offer in listed.items()
-                if oid not in known and oid not in self.state.ids
-            ]
-            if self.enrich_known:
-                todo += [
-                    (oid, None)
-                    for oid in alert_ids
-                    if oid not in listed and oid not in self.state.ids
-                ]
-            robots = self.robots()
-            for oid, offer in todo[: self.max_details]:
-                url = self.offer_url(oid, (offer or {}).get("href"))
+            for cand in todo:
+                if self.state.opened_on(day) >= self.max_details:
+                    break
+                done += 1
+                oid = cand["id"]
+                url = self.offer_url(oid, cand.get("url"))
                 if not robots.allowed(url):
                     self._count("detail_robots_disallowed")
                     continue
+                self.state.count_open(day)
                 page = self._visit(browser, url)
                 detail = parse_detail(page)
                 self._count(f"detail_{detail['how']}")
                 if detail["closed"]:
-                    self.state.add(oid)
+                    self.state.closed.add(oid)
                     self._count("detail_closed")
                     continue
-                raw = to_raw(oid, self.offer_url(oid, page.url), offer, detail)
+                if not detail["description"]:
+                    self.state.no_description.add(oid)
+                    self._count("detail_no_description")
+                raw = to_raw(oid, self.offer_url(oid, page.url), cand, detail)
                 if raw is not None:
                     out.append(raw)
-            self._count("detail_skipped_cap", max(0, len(todo) - self.max_details))
+            self._count("detail_skipped_cap", len(todo) - done)
         finally:
             self.state.save()
             browser.close()
+        self._log(out)
+        return out
+
+    def _log(self, out: list[RawPosting]) -> None:
         log.info(
             "jobteaser: %d pages, %d offers returned, stats=%s",
             self._visits,
             len(out),
             json.dumps(self.stats, sort_keys=True),
         )
-        return out
 
 
 def to_raw(
-    offer_id: str, url: str, offer: dict[str, Any] | None, detail: dict[str, Any]
+    offer_id: str, url: str, known: dict[str, Any] | None, detail: dict[str, Any]
 ) -> RawPosting | None:
-    """Listing offer (optional) + detail page -> RawPosting (None if there's no title)."""
-    offer = offer or {}
-    title = detail.get("title") or offer.get("title") or ""
+    """Detail page (+ what is already stored, as fallback) -> RawPosting (None without a
+    title). The fallback keeps a field the detail page lacks from being blanked on upsert."""
+    known = known or {}
+    title = detail.get("title") or known.get("title") or ""
     if not title:
         return None
-    closing = parse_human_date(detail.get("closing") or offer.get("closing"))
-    posted = detail.get("posted") or offer.get("posted")
+    posted = detail.get("posted")
     return RawPosting(
         source=SOURCE,
         external_id=offer_id,
         url=url,
         title=title,
-        company=detail.get("company") or offer.get("company") or "",
-        location=detail.get("location") or offer.get("location"),
-        employment_type=detail.get("contract") or offer.get("contract"),
-        raw_text=detail.get("description") or offer.get("description") or "",
+        company=detail.get("company") or known.get("company") or "",
+        location=detail.get("location") or known.get("location"),
+        employment_type=detail.get("contract"),
+        raw_text=detail.get("description") or "",
         posted_at=parse_datetime(posted) if posted else None,
-        deadline=closing,
+        deadline=parse_human_date(detail.get("closing")),
         extra={
             "via": SOURCE,
             "jobteaser_host": urlsplit(url).netloc,
-            "list": offer.get("list", "alert"),
+            "list": known.get("list", "alert"),
             "detail_fetched": True,
         },
     )
@@ -866,31 +807,16 @@ def from_settings(
 
 
 def smoke_test(conn: JobTeaserConnector, browser: Browser) -> dict[str, Any]:
-    """`make jobteaser-test`: session check, the first page of the first listing, one detail
-    page. Counts and parse modes only (no titles, companies or text)."""
+    """`make jobteaser-test`: session check and one offer page still missing a description.
+    Counts and parse modes only (no titles, companies or text). Listing pages are never
+    opened."""
     report: dict[str, Any] = {"session": "ok"}
     conn.session_ok(browser)
-    robots = conn.robots()
-    if conn.listings:
-        kind, template = conn.listings[0]
-        url = _page_url(template, 1)
-        report["listing_kind"] = kind
-        if robots.allowed(url):
-            page = conn._visit(browser, url)
-            offers, how = parse_listing(page, conn.base_url)
-            totals = [t for t in (json_total(b) for _u, b in page.payloads) if t is not None]
-            report.update(
-                listing_parse=how,
-                listing_offers=len(offers),
-                listing_json_responses=len(page.payloads),
-                listing_total_reported=max(totals) if totals else None,
-            )
-        else:
-            report["listing"] = "robots.txt disallows this listing URL: not opened"
-    _known, alert_ids = conn.ids()
-    if alert_ids:
-        url = conn.offer_url(alert_ids[0])
-        if robots.allowed(url):
+    pending = conn.pending()
+    report["detail_pending"] = len(pending)
+    if pending:
+        url = conn.offer_url(pending[0]["id"], pending[0].get("url"))
+        if conn.robots().allowed(url):
             detail = parse_detail(conn._visit(browser, url))
             report.update(
                 detail_parse=detail["how"],
@@ -902,6 +828,6 @@ def smoke_test(conn: JobTeaserConnector, browser: Browser) -> dict[str, Any]:
         else:
             report["detail"] = "robots.txt disallows the detail URL: not opened"
     else:
-        report["detail"] = "no alert/seed offer in the database to try"
+        report["detail"] = "no offer without a description in the database"
     report["pages_opened"] = conn._visits
     return report

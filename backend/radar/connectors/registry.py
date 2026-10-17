@@ -18,7 +18,7 @@ Structure (see ``config/companies.example.yaml``)::
       enabled: true          # optional, default true
       # Only LinkedIn and JobTeaser alert senders are ever processed (no generic senders).
     jobteaser:               # optional; needs the browser profile from `make jobteaser-login`
-      enabled: true          # searches: config/jobteaser_searches.yaml
+      enabled: true          # offer pages only; links: config/jobteaser_searches.yaml
 
 The "linkedin_jobs" source is configured separately in ``config/linkedin_searches.yaml``
 (private, see the ``.example``) and is built only when that file and the linkedin-cli binary
