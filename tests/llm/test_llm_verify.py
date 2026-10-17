@@ -372,3 +372,30 @@ def test_failed_recheck_keeps_previous_llm_claims_and_adds_new_precheck() -> Non
     assert out["counts"]["unsupported"] == 1
     # texts changed: the old result does not apply any more
     assert keep_previous_llm(previous, {**new, "texts_hash": "other"})["status"] == "precheck_only"
+
+
+def test_reverify_incomplete_rechecks_rate_limited_packs(session, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from radar.llm import verify
+    from radar.models import ApplicationPack
+
+    pack = ApplicationPack(
+        posting_id=1,
+        cover_letter="I built a tool.",
+        verification={"status": "precheck_only", "error": "rate_limit", "claims": []},
+    )
+    done = ApplicationPack(posting_id=2, verification={"status": "ok", "claims": []})
+    session.add_all([pack, done])
+    session.flush()
+    seen: list[int | None] = []
+    monkeypatch.setattr(verify, "verifier_provider", lambda: object())
+    monkeypatch.setattr(
+        verify,
+        "verify_pack",
+        lambda s, p, provider=None: seen.append(p.posting_id) or {"status": "ok"},
+    )
+    assert verify.reverify_incomplete(session) == {
+        "candidates": 1,
+        "verified": 1,
+        "still_incomplete": 0,
+    }
+    assert seen == [1]

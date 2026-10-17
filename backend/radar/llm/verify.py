@@ -539,6 +539,36 @@ def verify_pack(
     return verification
 
 
+def reverify_incomplete(session: Session, limit: int = 5) -> dict[str, int]:
+    """Re-check packs whose last fact check could not reach the LLM (rate limit, error), oldest
+    first. Stops at the first rate limit."""
+    from sqlmodel import col, select
+
+    stats = {"candidates": 0, "verified": 0, "still_incomplete": 0}
+    provider = verifier_provider()
+    if provider is None:
+        return stats
+    packs = [
+        p
+        for p in session.exec(
+            select(ApplicationPack).order_by(col(ApplicationPack.updated_at))
+        ).all()
+        if isinstance(p.verification, dict)
+        and p.verification.get("status") == "precheck_only"
+        and p.verification.get("error") not in (None, "disabled")
+    ][:limit]
+    stats["candidates"] = len(packs)
+    for pack in packs:
+        result = verify_pack(session, pack, provider=provider)
+        if result.get("status") == "ok":
+            stats["verified"] += 1
+        else:
+            stats["still_incomplete"] += 1
+            if result.get("error") == "rate_limit":
+                break
+    return stats
+
+
 def verify_draft(
     session: Session,
     draft: Draft,

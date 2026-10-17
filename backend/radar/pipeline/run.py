@@ -251,6 +251,14 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
     except Exception as exc:
         session.rollback()
         stats["errors"].append({"source": "llm:packs", "error": error_label(exc)})
+    try:
+        from radar.llm.verify import reverify_incomplete
+
+        llm["reverify"] = reverify_incomplete(session)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        stats["errors"].append({"source": "llm:verify", "error": error_label(exc)})
     if not opts.contacts:
         return
     try:
