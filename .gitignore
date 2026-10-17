@@ -45,3 +45,4 @@ frontend/dist/
 # Local daily-run logs
 logs/
 PROMPT_NEXT.md
+PROMPT_*.md
