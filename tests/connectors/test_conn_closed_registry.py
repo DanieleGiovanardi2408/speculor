@@ -155,3 +155,56 @@ def test_build_connectors_source_filter_and_disabled_linkedin(client: PoliteClie
     cfg = {**CFG, "linkedin": {"enabled": False, "queries": [{"keywords": "x"}]}}
     assert all(c.source != "linkedin" for c in build_connectors(client, cfg))
     assert build_connectors(client, {}) == []
+
+
+# ------------------------------------------------------------------ generic careers pages
+def _robots_ok(mock: respx.MockRouter, host: str) -> None:
+    mock.get(f"https://{host}/robots.txt").mock(return_value=httpx.Response(200, text=""))
+
+
+LONG = "<p>" + "Responsibilities and requirements for this internship. " * 20 + "</p>"
+
+
+def test_generic_page_404_and_markers_mean_closed(
+    client: PoliteClient, mock: respx.MockRouter
+) -> None:
+    _robots_ok(mock, "careers.example.com")
+    mock.get("https://careers.example.com/jobs/123456").mock(return_value=httpx.Response(404))
+    mock.get("https://careers.example.com/jobs/223456").mock(
+        return_value=httpx.Response(
+            200, text=f"<h1>Sorry</h1><p>This job is no longer available.</p>{LONG}"
+        )
+    )
+    mock.get("https://careers.example.com/jobs/323456").mock(
+        return_value=httpx.Response(200, text=f"<h1>Data Intern</h1>{LONG}")
+    )
+    assert check_open(client, "https://careers.example.com/jobs/123456") is False
+    assert check_open(client, "https://careers.example.com/jobs/223456") is False
+    assert check_open(client, "https://careers.example.com/jobs/323456") is True
+
+
+def test_generic_redirect_that_loses_the_job_id_means_closed(
+    client: PoliteClient, mock: respx.MockRouter
+) -> None:
+    _robots_ok(mock, "careers.example.org")
+    mock.get("https://careers.example.org/job/R12345").mock(
+        return_value=httpx.Response(302, headers={"Location": "https://careers.example.org/search"})
+    )
+    mock.get("https://careers.example.org/search").mock(
+        return_value=httpx.Response(200, text=f"<h1>Search jobs</h1>{LONG}")
+    )
+    assert check_open(client, "https://careers.example.org/job/R12345") is False
+
+
+def test_generic_js_shell_or_robots_disallow_is_unknown(
+    client: PoliteClient, mock: respx.MockRouter
+) -> None:
+    _robots_ok(mock, "spa.example.com")
+    mock.get("https://spa.example.com/jobs/99999").mock(
+        return_value=httpx.Response(200, text="<div id='root'></div><script src='a.js'></script>")
+    )
+    mock.get("https://blocked.example.com/robots.txt").mock(
+        return_value=httpx.Response(200, text="User-agent: *\nDisallow: /\n")
+    )
+    assert check_open(client, "https://spa.example.com/jobs/99999") is None
+    assert check_open(client, "https://blocked.example.com/jobs/1") is None
