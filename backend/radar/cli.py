@@ -74,6 +74,18 @@ def seed(
     console.print(f"Imported: {counts}")
 
 
+@app.command("seed-scores-to-notes")
+def seed_scores_to_notes() -> None:
+    """Move the tracker's manual priorities into posting notes, so seed postings get the same
+    LLM scoring as every other posting (idempotent)."""
+    from radar.db import session_scope
+    from radar.seed import demote_manual_scores
+
+    with session_scope() as s:
+        counts = demote_manual_scores(s)
+    console.print(counts)
+
+
 @app.command("sync-companies")
 def sync_companies() -> None:
     """Store config/companies.yaml entries (sector, ATS) in the companies table."""

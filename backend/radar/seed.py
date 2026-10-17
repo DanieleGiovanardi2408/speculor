@@ -40,9 +40,36 @@ def _join(*parts: str | None) -> str | None:
     return "\n".join(x for x in parts if x) or None
 
 
+TRACKER_PREFIX = "[Tracker:"
+
+
+def tracker_note(priority: Any, why: Any, warn: Any = None) -> str | None:
+    if not priority and not why:
+        return None
+    parts = [str(priority or "").strip(), str(why or "").strip(), str(warn or "").strip()]
+    return f"{TRACKER_PREFIX} " + " - ".join(x for x in parts if x) + "]"
+
+
+def demote_manual_scores(session: Session) -> dict[str, int]:
+    """Turn the tracker's manual scores into notes and delete them, so seed postings get the
+    same LLM score as every other posting. Idempotent; the note is added once."""
+    counts = {"scores_removed": 0, "notes_added": 0}
+    for score in session.exec(select(Score).where(Score.provider == "manual")).all():
+        posting = session.get(Posting, score.posting_id)
+        if posting is not None and TRACKER_PREFIX not in (posting.note or ""):
+            note = tracker_note(score.priority, score.why_fits, score.what_doesnt_fit)
+            posting.note = _join(posting.note, note)
+            session.add(posting)
+            counts["notes_added"] += 1
+        session.delete(score)
+        counts["scores_removed"] += 1
+    session.flush()
+    return counts
+
+
 def import_seed(session: Session, path: Path) -> dict[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    counts = {"companies": 0, "postings": 0, "applications": 0, "scores": 0}
+    counts = {"companies": 0, "postings": 0, "applications": 0}
 
     for c in data.get("companies", []):
         if session.exec(select(Company).where(Company.name == c["co"])).first():
@@ -104,20 +131,11 @@ def import_seed(session: Session, path: Path) -> dict[str, int]:
         session.add(posting)
         session.flush()
         assert posting.id is not None
-        session.add(
-            Score(
-                posting_id=posting.id,
-                content_hash=posting.content_hash,
-                priority=p.get("p", "Media"),
-                why_fits=p.get("why") or "",
-                what_doesnt_fit=warn,
-                warnings=[warn] if warn else [],
-                provider="manual",
-                model="manual",
-            )
-        )
+        # The tracker's own priority is kept only as a note: seed postings are scored by the
+        # same LLM scoring as every other posting.
+        posting.note = _join(posting.note, tracker_note(p.get("p"), p.get("why"), warn))
+        session.add(posting)
         counts["postings"] += 1
-        counts["scores"] += 1
     session.flush()
 
     for a in data.get("applications", []):

@@ -11,13 +11,8 @@ SEED = Path(__file__).parent / "fixtures" / "seed" / "mini_seed.json"
 def test_import_seed_maps_fields_and_is_idempotent(session: Session) -> None:
     counts = import_seed(session, SEED)
     session.commit()
-    assert counts == {"companies": 2, "postings": 2, "applications": 1, "scores": 2}
-    assert import_seed(session, SEED) == {
-        "companies": 0,
-        "postings": 0,
-        "applications": 0,
-        "scores": 0,
-    }
+    assert counts == {"companies": 2, "postings": 2, "applications": 1}
+    assert import_seed(session, SEED) == {"companies": 0, "postings": 0, "applications": 0}
 
     sent = session.exec(select(Posting).where(Posting.external_id == "nebbia-ai-intern")).one()
     assert sent.user_status == "sent"
@@ -29,8 +24,9 @@ def test_import_seed_maps_fields_and_is_idempotent(session: Session) -> None:
     assert closed.status == "closed" and closed.closed_at is not None
     assert closed.deadline is None
 
-    score = session.exec(select(Score).where(Score.posting_id == sent.id)).one()
-    assert score.priority == "Alta" and score.provider == "manual"
+    # the tracker's priority is only a note: the posting waits for the normal LLM scoring
+    assert session.exec(select(Score).where(Score.posting_id == sent.id)).first() is None
+    assert sent.note is not None and "[Tracker: Alta" in sent.note
 
     app = session.exec(select(Application)).one()
     assert app.posting_id == sent.id
@@ -77,3 +73,49 @@ def test_example_companies_config_sectors_load(session: Session) -> None:
     sync_companies_config(session, cfg)
     sectors = {c.name: c.sector for c in session.exec(select(Company)).all()}
     assert sectors["Fiordo Payments"] == "fintech"
+
+
+def test_demote_manual_scores_keeps_a_note_and_is_idempotent(session: Session) -> None:
+    from radar.seed import demote_manual_scores
+
+    p = Posting(
+        uid="seed:x",
+        source="seed",
+        external_id="x",
+        url="https://a.example/1",
+        canonical_url="https://a.example/1",
+        title="AI Intern",
+        company_name="Acme",
+        content_hash="h",
+        note="mine",
+    )
+    session.add(p)
+    session.flush()
+    session.add(
+        Score(
+            posting_id=p.id or 0,
+            content_hash="h",
+            priority="Alta",
+            why_fits="fit",
+            what_doesnt_fit="",
+            provider="manual",
+            model="manual",
+        )
+    )
+    session.add(
+        Score(
+            posting_id=p.id or 0,
+            content_hash="h",
+            priority="Media",
+            why_fits="llm",
+            what_doesnt_fit="",
+            provider="groq",
+            model="m",
+        )
+    )
+    session.flush()
+    assert demote_manual_scores(session) == {"scores_removed": 1, "notes_added": 1}
+    assert demote_manual_scores(session) == {"scores_removed": 0, "notes_added": 0}
+    session.refresh(p)
+    assert p.note == "mine\n[Tracker: Alta - fit]"
+    assert [s.provider for s in session.exec(select(Score)).all()] == ["groq"]
