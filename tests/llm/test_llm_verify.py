@@ -284,3 +284,21 @@ def test_verifier_prompt_carries_posting_context() -> None:
     user = prompts.verify_user("FACTS", [("cover_letter", "Hi")], "Rotations in Zurich")
     assert "POSTING (context only" in user and "Rotations in Zurich" in user
     assert "POSTING" not in prompts.verify_user("FACTS", [("cover_letter", "Hi")])
+
+
+def test_verifier_uses_its_own_model_on_the_scoring_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from radar.config import get_settings
+    from radar.llm.provider import get_provider
+
+    monkeypatch.setenv("RADAR_LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("RADAR_DRAFT_MODEL", "big-model")
+    monkeypatch.setenv("RADAR_VERIFY_MODEL", "small-model")
+    get_settings.cache_clear()
+    try:
+        assert get_provider("verify").model == "small-model"
+        assert get_provider("draft").model == "big-model"
+    finally:
+        get_settings.cache_clear()

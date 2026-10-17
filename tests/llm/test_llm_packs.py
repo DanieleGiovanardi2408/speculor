@@ -7,6 +7,7 @@ from llm_testkit import ScriptedProvider, make_posting
 from sqlmodel import Session, select
 
 from radar.llm import packs, style
+from radar.llm import verify as verify_module
 from radar.llm.provider import RateLimitExhausted
 from radar.models import ApplicationPack, Contact, Draft, LLMUsage, Score
 
@@ -153,6 +154,7 @@ def test_one_regeneration_then_store_issues(
     bad = pack_json(linkedin_message=f"Hi [NOME], I am passionate {EM} truly. What do you build?")
     fake = ScriptedProvider([bad, bad, VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     stats = packs.build_packs(session, run_id=None, limit=5)
     assert stats["built"] == 1 and stats["requests"] == 2
     assert "passionate" in fake.prompts[1][1] and "PREVIOUS DRAFT" in fake.prompts[1][1]
@@ -168,6 +170,7 @@ def test_regeneration_fixes(
     bad = pack_json(cover_letter="To whom it may concern, I am a team player.")
     fake = ScriptedProvider([bad, pack_json(), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     (pack,) = session.exec(select(ApplicationPack)).all()
     assert not [i for i in pack.style_issues or [] if i.startswith("cover_letter")]
@@ -182,6 +185,7 @@ def test_overlong_drafts_trimmed(
     long = "Hi [NOME], " + " ".join(sentence for _ in range(30))
     fake = ScriptedProvider([pack_json(linkedin_connection_note=long, followup=long), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     by_kind = {d.kind: d for d in drafts(session)}
     assert len(by_kind["linkedin_connection_note"].text) <= 280
@@ -200,6 +204,7 @@ def test_salary_kept_when_posting_states_range(
     )
     fake = ScriptedProvider([pack_json(), VERIFY_EMPTY])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     packs.build_packs(session, run_id=None, limit=5)
     (pack,) = session.exec(select(ApplicationPack)).all()
     assert pack.form_answers is not None
@@ -216,6 +221,7 @@ def test_invalid_json_repair_then_skip(
     make_posting(session, priority="Alta")
     fake = ScriptedProvider(["not json", '{"cover_letter": "short"}'])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     stats = packs.build_packs(session, run_id=None, limit=5)
     assert stats["invalid"] == 1 and stats["built"] == 0
     assert session.exec(select(ApplicationPack)).all() == []
@@ -228,6 +234,7 @@ def test_rate_limit_stops(
     make_posting(session, title="Second", priority="Alta")
     fake = ScriptedProvider([pack_json(), RateLimitExhausted("daily")])
     monkeypatch.setattr(packs, "get_provider", lambda purpose: fake)
+    monkeypatch.setattr(verify_module, "get_provider", lambda purpose: fake)
     stats = packs.build_packs(session, run_id=None, limit=5)
     assert stats["stopped"] == "rate_limit" and stats["built"] == 1
     assert len(packs.pack_candidates(session, 5)) == 1  # resumes next run

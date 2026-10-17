@@ -361,7 +361,7 @@ def build_packs(
     profile = radar_config.load_yaml_config("profile")  # CV versions only: facts come from the bank
     cv_version = prompts.default_cv_version(profile)
     bank = load_facts()
-    verifier = provider if radar_config.get_settings().verify_drafts else None
+    verifier = verify.verifier_provider()
     pack_ids: list[int] = []
     consecutive_errors = 0
     for posting in postings:
@@ -521,7 +521,7 @@ def draft_for_contact(session: Session, posting_id: int, contact_id: int, kind: 
         status="draft",
         style_issues=issues,
     )
-    verifier = provider if radar_config.get_settings().verify_drafts else None
+    verifier = verify.verifier_provider()
     verify.verify_draft(
         session,
         draft,

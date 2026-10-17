@@ -436,11 +436,12 @@ def store_pack_verification(
 
 
 def verifier_provider() -> LLMProvider | None:
-    """The draft provider when verification is enabled, else None (pre-check only)."""
+    """The verifier provider (scoring provider, RADAR_VERIFY_MODEL) when verification is
+    enabled, else None (pre-check only)."""
     if not get_settings().verify_drafts:
         return None
     try:
-        return get_provider("draft")
+        return get_provider("verify")
     except MissingKeyError:
         return None
 

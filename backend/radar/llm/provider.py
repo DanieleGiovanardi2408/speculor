@@ -2,8 +2,8 @@
 
 * ``LLMProvider.complete(system, user, *, model, max_tokens, temperature, json_mode)`` returns an
   ``LLMResult``.
-* ``get_provider("scoring" | "draft")`` builds the provider configured in ``radar.config.Settings``
-  and raises ``MissingKeyError`` when the API key is absent.
+* ``get_provider("scoring" | "draft" | "verify")`` builds the provider configured in
+  ``radar.config.Settings`` and raises ``MissingKeyError`` when the API key is absent.
 * A client-side limiter (requests/min and tokens/min per provider+model) keeps us under the Groq
   free tier. On HTTP 429 we wait when the reset is short (<= 60 s); a daily limit (or a long
   reset) raises ``RateLimitExhausted`` so callers stop cleanly and resume on the next run.
@@ -38,7 +38,7 @@ from radar.timeutil import utcnow
 
 log = logging.getLogger(__name__)
 
-Purpose = Literal["scoring", "draft"]
+Purpose = Literal["scoring", "draft", "verify"]
 UsagePurpose = Literal["scoring", "pack", "draft", "contacts", "verify"]
 SleepFn = Callable[[float], None]
 
@@ -562,6 +562,8 @@ def get_provider(purpose: Purpose) -> LLMProvider:
     settings = get_settings()
     if purpose == "scoring":
         name, model = settings.llm_provider, settings.scoring_model
+    elif purpose == "verify":
+        name, model = settings.llm_provider, settings.verify_model
     else:
         name, model = settings.effective_draft_provider, settings.draft_model
     if name == "fake":

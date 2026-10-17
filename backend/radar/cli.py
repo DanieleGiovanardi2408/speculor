@@ -101,7 +101,7 @@ def demo() -> None:
 def run(
     sources: Annotated[str | None, typer.Option(help="Comma-separated sources to run")] = None,
     llm: Annotated[bool, typer.Option("--llm/--no-llm", help="Run LLM scoring and packs")] = True,
-    max_score: Annotated[int, typer.Option(help="Max postings to score this run")] = 60,
+    max_score: Annotated[int, typer.Option(help="Max postings to score this run")] = 30,
     max_packs: Annotated[int, typer.Option(help="Max application packs this run")] = 5,
     check_closed: Annotated[bool, typer.Option("--check-closed/--no-check-closed")] = True,
     rank: Annotated[

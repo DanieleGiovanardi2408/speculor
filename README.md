@@ -40,7 +40,7 @@ flowchart LR
     S["Sources<br/>ATS boards (9 types)<br/>LinkedIn saved searches · JobTeaser<br/>email alerts (IMAP) · manual URL"] --> N["Normalize<br/>+ cross-source dedupe"]
     N --> F["Hard filters<br/>rules.yaml · language detection<br/>+ post-graduation track"]
     F --> E["Local embedding<br/>pre-ranking"]
-    E --> L["Relevance caps<br/>+ LLM scorer (top 60)"]
+    E --> L["Relevance caps<br/>+ LLM scorer (top 30)"]
     L --> P["Packs + drafts<br/>from the fact bank<br/>+ fact check"]
     P --> C["Public contacts<br/>(capped)"]
     C --> DB
@@ -72,7 +72,7 @@ flowchart LR
   the free-tier daily limit resumes the next day.
 - **Local pre-ranking** (optional, free): with the `embed` extra (`uv sync --extra embed`), a
   small multilingual embedding model on the Mac computes each posting's similarity to the fact
-  bank and target roles; the LLM budget (`--max-score`, default 60) goes to the closest postings
+  bank and target roles; the LLM budget (`--max-score`, default 30) goes to the closest postings
   first and the web app shows and sorts by *Affinità*. `radar rank` refreshes it on its own.
 - **Packs**: cover letter (at most 250 words, opening with the availability line), form answers
   and outreach drafts. Writing rules are enforced in code (no em dashes, no cliches, length

@@ -46,7 +46,7 @@ RULES_HASH_SETTING = "filters:rules_hash"
 class PipelineOptions:
     sources: list[str] | None = None
     llm: bool = True
-    max_score: int = 60
+    max_score: int = 30
     max_packs: int = 5
     contacts: bool = True  # public contact search for Alta postings (budget-capped)
     check_closed: bool = True

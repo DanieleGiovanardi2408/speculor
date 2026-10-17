@@ -41,8 +41,11 @@ class Settings(BaseSettings):
         default=None, validation_alias="RADAR_DRAFT_PROVIDER"
     )
     draft_model: str = Field(default="openai/gpt-oss-120b", validation_alias="RADAR_DRAFT_MODEL")
-    # Second LLM call after drafting that checks every claim against the fact bank.
+    # Second LLM call after drafting that checks every claim against the fact bank. It runs on
+    # the scoring provider with its own model: Groq free-tier limits are per model, so the
+    # large model's daily budget stays for drafting.
     verify_drafts: bool = Field(default=True, validation_alias="RADAR_VERIFY_DRAFTS")
+    verify_model: str = Field(default="openai/gpt-oss-20b", validation_alias="RADAR_VERIFY_MODEL")
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 
@@ -57,7 +60,7 @@ class Settings(BaseSettings):
         default=None, validation_alias="RADAR_CONTACTS_PROVIDER"
     )
     contacts_model: str = Field(
-        default="openai/gpt-oss-120b", validation_alias="RADAR_CONTACTS_MODEL"
+        default="openai/gpt-oss-20b", validation_alias="RADAR_CONTACTS_MODEL"
     )
     contacts_monthly_cap_eur: float = Field(
         default=5.0, ge=0, validation_alias="RADAR_CONTACTS_MONTHLY_CAP_EUR"

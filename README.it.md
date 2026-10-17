@@ -35,7 +35,7 @@ flowchart LR
     S["Fonti<br/>board ATS (9 tipi)<br/>ricerche salvate LinkedIn · JobTeaser<br/>alert e-mail (IMAP) · URL a mano"] --> N["Normalizza<br/>+ deduplica tra fonti"]
     N --> F["Filtri rigidi<br/>rules.yaml · rilevamento lingua<br/>+ percorso dopo la laurea"]
     F --> E["Pre-ranking locale<br/>con embedding"]
-    E --> L["Tetti di pertinenza<br/>+ punteggio LLM (top 60)"]
+    E --> L["Tetti di pertinenza<br/>+ punteggio LLM (top 30)"]
     L --> P["Pacchetti + bozze<br/>dalla fact bank<br/>+ verifica fatti"]
     P --> C["Contatti pubblici<br/>(con tetto)"]
     C --> DB[("SQLite<br/>(o Postgres)")]
@@ -59,7 +59,7 @@ flowchart LR
   descrizione è soprattutto in francese, tedesco, spagnolo o olandese.
 - **Pre-ranking locale** (facoltativo, gratuito): con l'extra `embed` un piccolo modello di
   embedding multilingue sul Mac calcola l'*Affinità* di ogni annuncio con la fact bank e i ruoli
-  target; il budget LLM (60 al giorno di default) va prima agli annunci più vicini.
+  target; il budget LLM (30 al giorno di default) va prima agli annunci più vicini.
 - **Punteggio**: un LLM assegna Alta / Media / Bassa con le motivazioni. I titoli fuori target
   (tax, payroll, sales, legal, HR, ...) prendono "Bassa" senza chiamare l'LLM; ogni flag dei
   filtri arriva all'LLM come fatto; una lingua richiesta che l'utente non parla non è mai Alta,
