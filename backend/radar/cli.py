@@ -162,7 +162,7 @@ def run(
 
 
 @app.command()
-def score(limit: Annotated[int, typer.Option()] = 60) -> None:
+def score(limit: Annotated[int, typer.Option()] = 30) -> None:
     """Score unscored postings that passed the filters."""
     from radar.db import session_scope
     from radar.llm.scoring import score_pending
