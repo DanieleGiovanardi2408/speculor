@@ -344,3 +344,31 @@ def test_unrecognised_verdicts_trigger_a_repair() -> None:
     )
     with pytest.raises(ValueError):
         parse_verifier(raw, bank, ["cover_letter"])
+
+
+def test_failed_recheck_keeps_previous_llm_claims_and_adds_new_precheck() -> None:
+    from radar.llm.verify import keep_previous_llm
+
+    old_claim = {
+        "text_id": "cover_letter",
+        "claim": "At Acme I built scrapers.",
+        "fact_id": "x",
+        "verdict": "supported",
+        "source": "llm",
+        "reason": None,
+    }
+    previous = {"status": "ok", "texts_hash": "h", "claims": [old_claim]}
+    pre = {
+        "text_id": "cover_letter",
+        "claim": "I hold an MSc.",
+        "fact_id": "edu",
+        "verdict": "unsupported",
+        "source": "precheck",
+        "reason": "r",
+    }
+    new = {"status": "precheck_only", "error": "rate_limit", "texts_hash": "h", "claims": [pre]}
+    out = keep_previous_llm(previous, new)
+    assert out["status"] == "ok" and out["counts"]["supported"] == 1
+    assert out["counts"]["unsupported"] == 1
+    # texts changed: the old result does not apply any more
+    assert keep_previous_llm(previous, {**new, "texts_hash": "other"})["status"] == "precheck_only"

@@ -384,6 +384,35 @@ def verify_texts(
     }
 
 
+def keep_previous_llm(previous: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """A re-check whose LLM call failed (rate limit, error) must not wipe a complete earlier
+    check of the same texts: keep the earlier LLM claims and apply the new pre-check on top."""
+    if (
+        new.get("status") != "precheck_only"
+        or new.get("error") in (None, "disabled")
+        or previous.get("status") != "ok"
+        or previous.get("texts_hash") != new.get("texts_hash")
+    ):
+        return new
+    old_llm = [
+        {**c, "source": "llm"}
+        for c in previous.get("claims", [])
+        if str(c.get("source", "")).startswith("llm")
+    ]
+    pre = [c for c in new.get("claims", []) if c.get("source") == "precheck"]
+    claims = merge(old_llm, pre)
+    out = dict(previous)
+    out.update(
+        claims=claims,
+        counts=counts(claims),
+        facts_source=new.get("facts_source"),
+        facts_version=new.get("facts_version"),
+        precheck_at=new.get("verified_at"),
+        note=f"verificatore LLM non disponibile ({new.get('error')}): risultato LLM precedente",
+    )
+    return out
+
+
 def subset(verification: dict[str, Any], text_id: str, text: str) -> dict[str, Any]:
     """The part of a pack verification that concerns one text (stored on Draft rows)."""
     claims = [c for c in verification.get("claims", []) if c.get("text_id") == text_id]
@@ -500,6 +529,7 @@ def verify_pack(
     finally:
         for r in results:
             record_usage(session, None, "verify", r)
+    verification = keep_previous_llm(previous, verification)
     store_pack_verification(session, pack, verification)
     log.info(
         "verify: pack checked, %d claims (%d unsupported)",
