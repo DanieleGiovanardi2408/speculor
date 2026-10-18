@@ -31,6 +31,7 @@ from radar.pipeline.closed import (
     close_missing,
     is_exhaustive,
 )
+from radar.pipeline.describe import DESCRIBE_CAP, Described, Describer, describe_postings
 from radar.pipeline.diff import Diff, diff_for_run
 from radar.pipeline.filters import Rules, apply_filters, apply_filters_all, load_rules
 from radar.pipeline.rank import Embedder, rank_postings
@@ -51,6 +52,8 @@ class PipelineOptions:
     contacts: bool = True  # public contact search for Alta postings (budget-capped)
     check_closed: bool = True
     check_cap: int = DEFAULT_CHECK_CAP
+    describe: bool = True  # fetch descriptions of seed postings that lack one
+    describe_cap: int = DESCRIBE_CAP
     rank: bool = True  # local embedding similarity before the LLM (needs the `embed` extra)
 
 
@@ -299,10 +302,11 @@ def run_pipeline(
     reports_dir: Path | None = None,
     now: datetime | None = None,
     embedder: Embedder | None = None,
+    describer: Describer | None = None,
 ) -> PipelineResult:
-    """Run the whole pipeline. ``connectors``/``engine``/``checker``/``rules``/``embedder`` are
-    injectable for tests; by default they come from config, the database settings and the
-    network."""
+    """Run the whole pipeline. ``connectors``/``engine``/``checker``/``rules``/``embedder``/
+    ``describer`` are injectable for tests; by default they come from config, the database
+    settings and the network."""
     engine = init_db(engine)
     now = now or utcnow()
     stats = _empty_stats()
@@ -320,11 +324,12 @@ def run_pipeline(
             if connectors is not None:
                 selected = _select(connectors, opts, enabled)
                 n_connectors = len(selected)
-                _core(session, selected, run_id, opts, stats, checker, rules, today, now)
+                _core(session, selected, run_id, opts, stats, checker, rules, today, now, describer)
             else:
                 from radar.connectors.closed import check_open
                 from radar.connectors.http import PoliteClient
                 from radar.connectors.registry import build_connectors
+                from radar.pipeline.describe import describe_url
 
                 with PoliteClient.from_settings() as client:
                     built: list[Connector] = []
@@ -346,6 +351,9 @@ def run_pipeline(
                     def url_checker(url: str) -> bool | None:
                         return check_open(client, url)
 
+                    def url_describer(url: str) -> Described:
+                        return describe_url(client, url)
+
                     _core(
                         session,
                         selected,
@@ -356,6 +364,7 @@ def run_pipeline(
                         rules,
                         today,
                         now,
+                        describer or url_describer,
                     )
         except Exception as exc:
             session.rollback()
@@ -409,6 +418,7 @@ def _core(
     rules: Rules | None,
     today: date | None,
     now: datetime,
+    describer: Describer | None = None,
 ) -> None:
     touched, seen = _collect(session, connectors, run_id, stats, now)
 
@@ -421,6 +431,17 @@ def _core(
         except Exception as exc:
             session.rollback()
             stats["errors"].append({"source": "closed-check", "error": error_label(exc)})
+
+    if opts.describe and describer is not None:
+        try:
+            described = describe_postings(
+                session, describer, run_id=run_id, cap=opts.describe_cap, now=now
+            )
+            touched.update(described.pop("touched"))
+            stats["describe"] = described
+        except Exception as exc:
+            session.rollback()
+            stats["errors"].append({"source": "describe", "error": error_label(exc)})
 
     _run_filters(session, rules or load_rules(), touched, stats, today)
 

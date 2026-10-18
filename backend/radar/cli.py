@@ -93,6 +93,29 @@ def check_closed_cmd(
     console.print(counts)
 
 
+@app.command()
+def describe(
+    cap: Annotated[int, typer.Option(help="Max pages to read (never-tried first)")] = 40,
+) -> None:
+    """Fetch descriptions of seed postings that lack one (ATS API or careers page, robots.txt
+    respected), then re-run the filters on them. Without a description they are never scored."""
+    from radar.connectors.http import PoliteClient
+    from radar.db import session_scope
+    from radar.models import Posting
+    from radar.pipeline.describe import describe_postings, describe_url
+    from radar.pipeline.filters import apply_filters, load_rules
+
+    rules = load_rules()
+    with PoliteClient.from_settings() as client, session_scope() as s:
+        counts = describe_postings(s, lambda url: describe_url(client, url), cap=cap)
+        for pid in counts.pop("touched"):
+            posting = s.get(Posting, pid)
+            if posting is not None:
+                apply_filters(s, posting, rules)
+        s.commit()
+    console.print(counts)
+
+
 @app.command("seed-scores-to-notes")
 def seed_scores_to_notes() -> None:
     """Move the tracker's manual priorities into posting notes, so seed postings get the same

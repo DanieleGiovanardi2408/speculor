@@ -16,7 +16,7 @@ import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import exists, func
+from sqlalchemy import and_, exists, func, or_
 from sqlmodel import Session, col, select
 
 from radar import config as radar_config
@@ -32,6 +32,8 @@ from radar.llm.provider import (
 )
 from radar.llm.relevance import Relevance
 from radar.models import Company, FilterResult, Posting, Score
+from radar.pipeline.dedupe import RICH_TEXT
+from radar.pipeline.describe import DESCRIBE_SOURCES, FETCHED
 
 log = logging.getLogger(__name__)
 
@@ -141,7 +143,8 @@ def parse_score(text: str) -> ScoreOut:
 
 def pending_postings(session: Session, limit: int) -> list[Posting]:
     """Open, non-rejected, non-duplicate postings whose content was never scored, best
-    embedding similarity first (across the whole backlog, not only today's)."""
+    embedding similarity first (across the whole backlog, not only today's). Seed postings
+    without a description are left out: they are never scored on the title alone."""
     already_scored = exists().where(col(Score.content_hash) == col(Posting.content_hash))
     stmt = (
         select(Posting)
@@ -151,6 +154,16 @@ def pending_postings(session: Session, limit: int) -> list[Posting]:
             col(Posting.duplicate_of).is_(None),
             Posting.content_hash != "",
             ~already_scored,
+            # seed postings only once they have a real description (pipeline/describe.py)
+            or_(
+                col(Posting.source).not_in(DESCRIBE_SOURCES),
+                col(Posting.description_status) == FETCHED,
+                and_(
+                    col(Posting.description_from).is_not(None),
+                    col(Posting.description_from) != col(Posting.uid),
+                    func.length(col(Posting.raw_text)) >= RICH_TEXT,
+                ),
+            ),
         )
         .order_by(
             # embedding pre-ranking first (NULL = not ranked yet, after ranked ones)

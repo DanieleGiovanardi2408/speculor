@@ -86,6 +86,9 @@ class Posting(SQLModel, table=True):
     sources: list[dict[str, Any]] | None = _json_col()
     # uid of the member row whose (richer) description raw_text shows; NULL = its own.
     description_from: str | None = None
+    # Seed postings only: "fetched" (description read from the posting's page) | "unavailable"
+    description_status: str | None = None
+    description_checked_at: datetime | None = None
     first_seen: datetime = Field(default_factory=utcnow)
     last_seen: datetime = Field(default_factory=utcnow)
     status: str = Field(default="open", index=True)
