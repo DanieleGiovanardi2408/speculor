@@ -227,6 +227,9 @@ time; that board is then reported and skipped.
   without sending any search or detail request. We don't evade this, so there's no browser user
   agent and no alternative endpoint. The parser is kept and tested on synthetic fixtures in case
   access is ever granted.
+- **Not in the daily run**: since it can only fail, the connector is built only with
+  `linkedin: {enabled: true}` in `companies.yaml` (default off). LinkedIn postings come from
+  `linkedin_jobs` and the alert emails.
 - LinkedIn postings can still be added by hand (see Manual add); they are stored from the URL only.
 
 ## LinkedIn saved searches (`linkedin_jobs.py`)

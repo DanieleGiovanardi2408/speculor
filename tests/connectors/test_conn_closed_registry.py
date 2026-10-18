@@ -125,6 +125,7 @@ CFG = {
         {"name": "H", "ats": "lever", "slug": None, "active": True},
     ],
     "linkedin": {
+        "enabled": True,
         "max_details": 3,
         "queries": [{"keywords": "AI intern", "location": "Italy"}, {"location": "no keywords"}],
     },
@@ -156,6 +157,9 @@ def test_build_connectors_source_filter_and_disabled_linkedin(client: PoliteClie
     assert [c.source for c in conns] == ["lever", "linkedin"]
     cfg = {**CFG, "linkedin": {"enabled": False, "queries": [{"keywords": "x"}]}}
     assert all(c.source != "linkedin" for c in build_connectors(client, cfg))
+    # off by default: robots.txt blocks the guest endpoints, it would fail every day
+    default = {**CFG, "linkedin": {"queries": [{"keywords": "x"}]}}
+    assert all(c.source != "linkedin" for c in build_connectors(client, default))
     assert build_connectors(client, {}) == []
 
 

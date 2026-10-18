@@ -116,11 +116,11 @@ companies:
     active: false              # skipped
     seed: false
 
-# LinkedIn public guest search. NOTE: linkedin.com/robots.txt disallows all paths for
-# non-whitelisted user agents, so this connector reports an error instead of fetching
-# (see docs/SOURCES.md). Kept here so it works if access is ever granted.
+# LinkedIn public guest search: OFF. linkedin.com/robots.txt disallows all paths for
+# non-whitelisted user agents, so it could only fail every day (see docs/SOURCES.md). Kept
+# here so it works if access is ever granted; LinkedIn postings come from linkedin_jobs.
 linkedin:
-  enabled: true
+  enabled: false
   max_details: 5               # description fetches per run
   queries:                     # one page (up to 10 cards) per query, last 7 days
     - {keywords: "AI engineer intern", location: "Italy"}

@@ -9,8 +9,8 @@ Structure (see ``config/companies.example.yaml``)::
       - {name: Acme GmbH, ats: personio, slug: acme, region: com, lang: en}   # .com host
       - {name: Acme Spa, ats: inrecruiting, slug: "acme|acme.it|<site key>"}   # host|d|k
       - {name: Acme Ltd, ats: workable, slug: acme, sector: fintech}
-    linkedin:
-      enabled: true          # optional, default true
+    linkedin:                # guest search: off unless enabled (robots.txt blocks it)
+      enabled: false         # optional, default false
       max_details: 5         # optional
       queries:
         - {keywords: "AI engineer intern", location: "Italy"}
@@ -160,7 +160,9 @@ def build_connectors(
         out.append(conn)
 
     li = companies_cfg.get("linkedin") or {}
-    if "linkedin" in wanted and isinstance(li, dict) and li.get("enabled", True):
+    # Off by default: linkedin.com/robots.txt disallows the guest endpoints for our user agent,
+    # so it could only fail every day. LinkedIn postings come from linkedin_jobs and alerts.
+    if "linkedin" in wanted and isinstance(li, dict) and li.get("enabled", False) is True:
         queries = [
             {"keywords": str(q.get("keywords", "")), "location": str(q.get("location", ""))}
             for q in li.get("queries") or []
