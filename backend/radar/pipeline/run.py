@@ -393,6 +393,9 @@ def run_pipeline(
     engine = init_db(engine)
     now = now or utcnow()
     stats = _empty_stats()
+    # Monotonic time stops while the Mac sleeps (mach_absolute_time): ``awake_seconds`` is the
+    # time the run really worked; finished_at - started_at also counts sleep.
+    awake_start = time.monotonic()
     with Session(engine) as session:
         run = Run(started_at=now, status="running", stats=stats)
         session.add(run)
@@ -470,6 +473,7 @@ def run_pipeline(
 
         run = session.get(Run, run_id) or run
         run.status = status
+        stats["awake_seconds"] = round(time.monotonic() - awake_start)
         run.stats = dict(stats)
         run.finished_at = utcnow()
         session.add(run)

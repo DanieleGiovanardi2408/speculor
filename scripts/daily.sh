@@ -21,6 +21,9 @@ trap 'rmdir "$LOCK"' EXIT
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 {
   echo "=== $(date '+%F %T') daily run ==="
-  uv run --frozen --all-extras radar run
+  # Keep the Mac awake while the run works (idle sleep; system sleep too when on power). On
+  # battery with the lid closed macOS still sleeps: the run then continues on the next wake,
+  # and the run stats show the time it was really awake (awake_seconds).
+  /usr/bin/caffeinate -i -s uv run --frozen --all-extras radar run
   echo "=== $(date '+%F %T') exit $? ==="
 } >> "$LOG" 2>&1

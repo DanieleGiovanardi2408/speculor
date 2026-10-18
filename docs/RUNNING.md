@@ -41,7 +41,15 @@ make schedule-remove    # uninstall
   **shut down**, that day's run is skipped; `make schedule-run-now` or `make run-pipeline` runs
   it by hand.
 - `scripts/daily.sh` takes a lock (`logs/.daily.lock`), so only one run happens at a time (a
-  missed run fired on wake never overlaps a running one), and runs `uv run --frozen radar run`.
+  missed run fired on wake never overlaps a running one), and runs `uv run --frozen radar run`
+  under `caffeinate -i -s`, so the Mac stays awake while it works (system sleep is prevented
+  only on power).
+- **Slow runs are usually sleep.** On battery with the lid closed macOS keeps sleeping and wakes
+  for a few seconds every ~16 minutes (Power Nap): the run advances only in those moments, so
+  a 30-minute run can end hours later. The run stats keep `awake_seconds` (time really spent
+  working) next to the start and end times, and Fonti shows both. Leave the Mac on power before
+  07:00 for a run that ends in about half an hour (`pmset -g log | grep -i wake` shows what
+  happened).
 - Output is appended to `logs/daily.log`: counts only, never company names, titles or email
   content. The log is rotated to `logs/daily.log.1` at about 2 MB. launchd's own output goes to
   `logs/launchd.log`.
