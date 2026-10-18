@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useConnectorStatus, useResumeConnector } from "../api/hooks";
 import type { ConnectorPause } from "../api/types";
 import { formatDateTime } from "../lib/format";
@@ -60,6 +61,9 @@ export function ConnectorPauseBanner() {
           <PausedRow key={source} source={source} pause={pause} />
         ))}
       </ul>
+      <Link to="/fonti" className="link mt-3 inline-flex min-h-11 items-center gap-1 text-sm sm:min-h-0">
+        Stato di tutte le fonti in Fonti <Icon name="chevronRight" size={14} />
+      </Link>
     </section>
   );
 }

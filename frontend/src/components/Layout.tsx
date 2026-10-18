@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { to: "/approvazioni", label: "Approvazioni", icon: "inbox", mobilePrimary: true },
   { to: "/candidature", label: "Candidature", icon: "briefcase", mobilePrimary: true },
   { to: "/aziende", label: "Aziende", icon: "building" },
+  { to: "/fonti", label: "Fonti", icon: "signal" },
   { to: "/impostazioni", label: "Impostazioni", icon: "settings" },
 ];
 

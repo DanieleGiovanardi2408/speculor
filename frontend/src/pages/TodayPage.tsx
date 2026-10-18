@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { usePostings, useToday } from "../api/hooks";
 import { Badge, PriorityBadge, type Tone } from "../components/Badge";
 import { ConnectorPauseBanner } from "../components/ConnectorPauseBanner";
+import { SourcesBanner } from "../components/SourcesBanner";
 import { GoalEditor, WeeklyProgress } from "../components/GoalEditor";
 import { Icon, type IconName } from "../components/Icon";
 import { JobteaserPassCard } from "../components/JobteaserPassCard";
@@ -94,6 +95,7 @@ export function TodayPage() {
       <PageHeader title="Oggi" subtitle={todayLabel} />
       <div className="mb-4 empty:hidden">
         <ConnectorPauseBanner />
+        <SourcesBanner />
       </div>
       <div className="mb-4 empty:hidden">
         <JobteaserPassCard />

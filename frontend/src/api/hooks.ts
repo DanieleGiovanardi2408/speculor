@@ -35,6 +35,7 @@ import type {
   RunSummary,
   SettingsOut,
   SettingsPatch,
+  SourcesOverview,
   Today,
   Usage,
 } from "./types";
@@ -55,6 +56,7 @@ export const qk = {
   run: (id: number) => ["run", id] as const,
   usage: (days: number) => ["usage", days] as const,
   connectorStatus: ["connectors", "status"] as const,
+  sources: ["sources"] as const,
   jobteaserPass: ["jobteaser", "pass"] as const,
 };
 
@@ -126,6 +128,12 @@ export const useConnectorStatus = () =>
   useQuery({
     queryKey: qk.connectorStatus,
     queryFn: ({ signal }) => api.get<ConnectorStatus>("/api/connectors/status", undefined, signal),
+  });
+
+export const useSources = () =>
+  useQuery({
+    queryKey: qk.sources,
+    queryFn: ({ signal }) => api.get<SourcesOverview>("/api/sources", undefined, signal),
   });
 
 export const useJobteaserPass = () =>
@@ -531,6 +539,9 @@ export function useResumeConnector() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (source: string) => api.post<ConnectorStatus>(`/api/connectors/${encodeURIComponent(source)}/resume`),
-    onSuccess: (status) => qc.setQueryData(qk.connectorStatus, status),
+    onSuccess: (status) => {
+      qc.setQueryData(qk.connectorStatus, status);
+      void qc.invalidateQueries({ queryKey: qk.sources });
+    },
   });
 }

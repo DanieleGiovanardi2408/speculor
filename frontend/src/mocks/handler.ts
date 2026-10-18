@@ -5,6 +5,9 @@ import type {
   ApplicationCreate,
   ConnectorStatus,
   JobteaserPass,
+  SourceCard,
+  SourceRunInfo,
+  SourcesOverview,
   Contact,
   ContactCreate,
   ContactPatch,
@@ -86,6 +89,76 @@ export function pauseMockConnector(source: string, reason: string, action: strin
 /** Test/demo helper: replace what GET /api/jobteaser/pass returns. */
 export function setMockJobteaserPass(pass: JobteaserPass) {
   db.jobteaserPass = pass;
+}
+
+/** Fictional Fonti data; paused sources follow the mock connector status. */
+function mockSources(): SourcesOverview {
+  const day = 86_400_000;
+  const started = new Date(Date.now() - 3 * 3_600_000).toISOString();
+  const run: SourceRunInfo = {
+    id: 42,
+    started_at: started,
+    finished_at: new Date(Date.now() - 2.5 * 3_600_000).toISOString(),
+    status: "partial",
+    wall_seconds: 1860,
+    awake_seconds: 1780,
+    timings: { collect: 1500, closed_check: 210, filters: 12, scoring: 60 },
+    report: true,
+  };
+  const chart = (ns: number[]) =>
+    ns.map((n, i) => ({ day: new Date(Date.now() - (6 - i) * day).toISOString().slice(0, 10), n }));
+  const base = { problem: null, action: null, paused_since: null, resumable: false, closed: null, seconds: null };
+  const cards: SourceCard[] = [
+    {
+      ...base, key: "greenhouse", label: "Greenhouse", state: "errors", kind: "ats", last_run: run,
+      fetched: 412, new: 6, closed: 3, seconds: 41,
+      problem: "La bacheca non esiste più (HTTP 404): l'azienda ha cambiato indirizzo o sistema.",
+      action: "Controlla con `uv run python scripts/check_boards.py --ats greenhouse` e correggi lo slug in config/companies.yaml (o metti `active: false`).",
+      chart: chart([3, 0, 5, 2, 1, 0, 6]),
+      boards: { configured: 12, working: 11, empty: ["Fiordo Payments", "Orbis Consulting"], detail: true,
+        failing: [{ company: "Lumen Labs AI", problem: "La bacheca non esiste più (HTTP 404).", action: "Controlla con `uv run python scripts/check_boards.py --ats greenhouse`." }] },
+    },
+    {
+      ...base, key: "workday", label: "Workday", state: "ok", kind: "ats", last_run: run, fetched: 230, new: 4, closed: 1, seconds: 1200,
+      chart: chart([1, 2, 0, 0, 3, 1, 4]), boards: { configured: 4, working: 4, empty: [], failing: [], detail: true },
+    },
+    {
+      ...base, key: "linkedin_jobs", label: "LinkedIn (ricerche salvate)", state: "ok", kind: "session", last_run: run, fetched: 85, new: 9,
+      chart: chart([7, 4, 9, 6, 8, 5, 9]),
+    },
+    {
+      ...base, key: "jobteaser", label: "JobTeaser (pagine offerta)", state: "ok", kind: "session", last_run: run, fetched: 12, new: 0, chart: null,
+    },
+    {
+      ...base, key: "extension", label: "Estensione «Salva in Radar»", state: "ok", kind: "local", last_run: null, fetched: null, new: null,
+      chart: chart([0, 0, 5, 0, 0, 0, 0]), last_pass: db.jobteaserPass.last_pass, remind: db.jobteaserPass.remind,
+    },
+    {
+      ...base, key: "email", label: "Email di avviso (IMAP)", state: "disabled", kind: "session", last_run: null, fetched: null, new: null, chart: chart([0, 0, 0, 0, 0, 0, 0]),
+      problem: "Casella email non configurata.", action: "Imposta RADAR_IMAP_USER in .env, poi `uv run radar imap login`.",
+    },
+    {
+      ...base, key: "contacts", label: "Ricerca contatti", state: "ok", kind: "llm", last_run: run, fetched: null, new: null, chart: chart([2, 0, 3, 1, 0, 2, 1]),
+    },
+  ];
+  for (const card of cards) {
+    const p = db.connectors[card.key];
+    if (p?.paused) Object.assign(card, { state: "paused", problem: p.reason, action: p.action, paused_since: p.since, resumable: true });
+  }
+  return {
+    generated_at: new Date().toISOString(),
+    last_run: run,
+    sources: cards,
+    quotas: {
+      linkedin: { used: 18, limit: 25, cli_limit: 30 },
+      groq: [
+        { model: "openai/gpt-oss-120b", used: 61_000, limit: 200_000 },
+        { model: "openai/gpt-oss-20b", used: 142_000, limit: 200_000 },
+      ],
+      contacts: { month_cost_eur: 0.42, monthly_cap_eur: 5, calls_today: 3, daily_call_cap: 10 },
+    },
+    attention: cards.filter((c) => c.state === "paused" || c.state === "errors").length,
+  };
 }
 
 const ok = (body: unknown, status = 200): MockResponse => ({ status, body: clone(body) });
@@ -238,6 +311,7 @@ export async function handleMock(
   }
 
   if (method === "GET" && path === "/jobteaser/pass") return ok(db.jobteaserPass);
+  if (method === "GET" && path === "/sources") return ok(mockSources());
 
   switch (route) {
     case "GET /health":

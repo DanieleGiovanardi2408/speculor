@@ -90,7 +90,7 @@ export function Notice({ tone = "info", title, children, icon }: { tone?: "info"
 }
 
 /** Renders `backticked` parts of a message as code. */
-function renderCode(text: string) {
+export function renderCode(text: string) {
   return text.split(/(`[^`]+`)/).map((part, i) =>
     part.startsWith("`") && part.endsWith("`") ? (
       <code key={i} className="rounded bg-subtle px-1 font-mono text-ink">

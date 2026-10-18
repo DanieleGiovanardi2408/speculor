@@ -452,3 +452,69 @@ export interface CompanyPatch {
 }
 
 export type SettingsPatch = Partial<SettingsOut>;
+
+/** GET /api/sources: the Fonti screen. */
+export type SourceState = "ok" | "errors" | "paused" | "disabled";
+
+export interface SourceRunInfo {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  /** Start to end, sleep of the Mac included. */
+  wall_seconds: number | null;
+  /** Time the run really worked (stops while the Mac sleeps); null for older runs. */
+  awake_seconds: number | null;
+  timings: Record<string, number>;
+  report: boolean;
+}
+
+export interface SourceBoardProblem {
+  company: string | null;
+  problem: string;
+  action?: string;
+}
+
+export interface SourceBoards {
+  configured: number;
+  /** null for runs recorded before per-board results existed. */
+  working: number | null;
+  empty: string[];
+  failing: SourceBoardProblem[];
+  detail: boolean;
+}
+
+export interface SourceCard {
+  key: string;
+  label: string;
+  state: SourceState;
+  problem: string | null;
+  action: string | null;
+  paused_since: string | null;
+  resumable: boolean;
+  last_run: SourceRunInfo | null;
+  fetched: number | null;
+  new: number | null;
+  closed: number | null;
+  seconds: number | null;
+  /** Seven local days, oldest first; null when the source adds no postings. */
+  chart: { day: string; n: number }[] | null;
+  kind: "ats" | "session" | "local" | "llm";
+  boards?: SourceBoards | null;
+  last_pass?: JobteaserLastPass | null;
+  remind?: string | null;
+  last_day?: string | null;
+  contacts?: Record<string, unknown> | null;
+}
+
+export interface SourcesOverview {
+  generated_at: string;
+  last_run: SourceRunInfo | null;
+  sources: SourceCard[];
+  quotas: {
+    linkedin: { used: number; limit: number; cli_limit: number } | null;
+    groq: { model: string; used: number; limit: number | null }[];
+    contacts: { month_cost_eur: number; monthly_cap_eur: number; calls_today: number; daily_call_cap: number };
+  };
+  attention: number;
+}
