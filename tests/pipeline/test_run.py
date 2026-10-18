@@ -86,7 +86,14 @@ def test_end_to_end(engine: Engine, rules: Rules, tmp_path: Path) -> None:
     )
     assert res.status == "partial"
     st = res.stats
-    assert st["sources"]["greenhouse"] == {"boards": 1, "fetched": 3, "new": 3, "errors": 0}
+    gh = dict(st["sources"]["greenhouse"])
+    assert gh.pop("seconds") >= 0
+    assert gh == {"boards": 1, "fetched": 3, "new": 3, "errors": 0, "closed": 0}
+    boards = {b["source"]: b for b in st["boards"]}
+    assert boards["greenhouse"]["fetched"] == 3 and boards["greenhouse"]["new"] == 3
+    assert boards["ashby"]["error"] == "SourceError (HTTP 503)"
+    assert boards["ashby"]["company"] == "Zeta" and boards["ashby"]["fetched"] == 0
+    assert {"collect", "filters"} <= set(st["timings"])
     assert st["sources"]["ashby"]["errors"] == 1
     assert st["sources"]["linkedin"]["new"] == 0  # same company/title/country: duplicate
     assert st["errors"] == [

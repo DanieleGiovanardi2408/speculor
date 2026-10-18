@@ -9,7 +9,9 @@ Nothing is ever sent from here.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+import time
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -139,6 +141,37 @@ def error_entry(conn: Connector, exc: BaseException, **override: str) -> dict[st
     return entry
 
 
+def _board_entry(conn: Connector) -> dict[str, Any]:
+    """One board/connector of the run (local database only; console output stays counts-only)."""
+    entry: dict[str, Any] = {"source": conn.source, "board": getattr(conn, "label", conn.source)}
+    company = getattr(conn, "company", None) or getattr(conn, "company_name", None)
+    if isinstance(company, str) and company:
+        entry["company"] = company
+    entry["fetched"] = 0
+    return entry
+
+
+def _timed(
+    src: dict[str, Any], board: dict[str, Any], started: float, error: str | None = None
+) -> None:
+    seconds = round(time.monotonic() - started, 1)
+    board["seconds"] = seconds
+    src["seconds"] = round(src.get("seconds", 0.0) + seconds, 1)
+    if error:
+        board["error"] = error
+
+
+@contextmanager
+def step(stats: dict[str, Any], name: str) -> Iterator[None]:
+    """Wall-clock seconds of one pipeline step in ``stats["timings"]``."""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        timings = stats.setdefault("timings", {})
+        timings[name] = round(timings.get(name, 0.0) + time.monotonic() - started, 1)
+
+
 def _source_stats(stats: dict[str, Any], source: str) -> dict[str, int]:
     sources: dict[str, dict[str, int]] = stats["sources"]
     return sources.setdefault(source, {"boards": 0, "fetched": 0, "new": 0, "errors": 0})
@@ -172,12 +205,16 @@ def _collect(
     seen: set[int] = set()
     companies = company_index(session)
     paused = paused_sources(session)
+    boards: list[dict[str, Any]] = stats.setdefault("boards", [])
     for conn in connectors:
         src = _source_stats(stats, conn.source)
         if conn.source in paused:
             src["paused"] = 1
             continue
         src["boards"] += 1
+        board = _board_entry(conn)
+        boards.append(board)
+        started = time.monotonic()
         try:
             raws = conn.fetch()
         except SourcePaused as exc:
@@ -189,11 +226,15 @@ def _collect(
             stats["errors"].append(
                 error_entry(conn, exc, error=f"paused: {exc.reason}", problem=exc.reason)
             )
+            _timed(src, board, started, error=f"paused: {exc.reason}")
             continue
         except Exception as exc:
             src["errors"] += 1
             stats["errors"].append(error_entry(conn, exc))
+            _timed(src, board, started, error=error_label(exc))
             continue
+        _timed(src, board, started)
+        board["fetched"] = len(raws)
         src["fetched"] += len(raws)
         try:
             uids: set[str] = set()
@@ -208,8 +249,9 @@ def _collect(
                     touched.update((pid, primary_id))
                 if outcome.kind == "new" and not outcome.is_duplicate:
                     src["new"] += 1
+                    board["new"] = board.get("new", 0) + 1
             if is_exhaustive(conn):
-                stats["closed_by_absence"] += close_missing(
+                closed = close_missing(
                     session,
                     source=conn.source,
                     companies=board_companies(conn, raws),
@@ -217,6 +259,8 @@ def _collect(
                     run_id=run_id,
                     now=now,
                 )
+                stats["closed_by_absence"] += closed
+                src["closed"] = src.get("closed", 0) + closed
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -260,7 +304,8 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
         llm["skipped"] = "scoring not available"
     else:
         try:
-            llm["scoring"] = score_pending(session, run_id=run_id, limit=opts.max_score)
+            with step(stats, "scoring"):
+                llm["scoring"] = score_pending(session, run_id=run_id, limit=opts.max_score)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -271,7 +316,8 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
         llm["skipped"] = (llm.get("skipped", "") + "; packs not available").lstrip("; ")
         return
     try:
-        llm["packs"] = build_packs(session, run_id=run_id, limit=opts.max_packs)
+        with step(stats, "packs"):
+            llm["packs"] = build_packs(session, run_id=run_id, limit=opts.max_packs)
         session.commit()
     except Exception as exc:
         session.rollback()
@@ -280,7 +326,8 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
         try:
             from radar.llm.scoring import score_seed_backlog
 
-            llm["backlog"] = score_seed_backlog(session, run_id=run_id)
+            with step(stats, "backlog"):
+                llm["backlog"] = score_seed_backlog(session, run_id=run_id)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -288,7 +335,8 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
     try:
         from radar.llm.verify import reverify_incomplete
 
-        llm["reverify"] = reverify_incomplete(session)
+        with step(stats, "reverify"):
+            llm["reverify"] = reverify_incomplete(session)
         session.commit()
     except Exception as exc:
         session.rollback()
@@ -298,7 +346,8 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
     try:
         from radar.llm.contacts import find_contacts_for_alta
 
-        llm["contacts"] = find_contacts_for_alta(session, run_id=run_id)
+        with step(stats, "contacts"):
+            llm["contacts"] = find_contacts_for_alta(session, run_id=run_id)
         session.commit()
     except Exception as exc:
         session.rollback()
@@ -320,6 +369,9 @@ def _print_summary(stats: dict[str, Any], status: str, run_id: int) -> None:
     )
     if stats.get("errors"):
         console.print(f"  [yellow]errors: {len(stats['errors'])}[/yellow]")
+    if stats.get("timings"):
+        steps = ", ".join(f"{k} {v / 60:.1f} min" for k, v in stats["timings"].items())
+        console.print(f"  timings: {steps}")
 
 
 def run_pipeline(
@@ -403,7 +455,8 @@ def run_pipeline(
             stats["errors"].append({"source": "pipeline", "error": error_label(exc)})
 
         if opts.rank and not failed:
-            _run_rank(session, stats, embedder)
+            with step(stats, "rank"):
+                _run_rank(session, stats, embedder)
         if opts.llm and not failed:
             _run_llm(session, run_id, opts, stats)
 
@@ -451,13 +504,15 @@ def _core(
     now: datetime,
     describer: Describer | None = None,
 ) -> None:
-    touched, seen = _collect(session, connectors, run_id, stats, now)
+    with step(stats, "collect"):
+        touched, seen = _collect(session, connectors, run_id, stats, now)
 
     if opts.check_closed and checker is not None:
         try:
-            stats["closed_by_check"] = check_open_postings(
-                session, checker, run_id=run_id, cap=opts.check_cap, exclude_ids=seen, now=now
-            )
+            with step(stats, "closed_check"):
+                stats["closed_by_check"] = check_open_postings(
+                    session, checker, run_id=run_id, cap=opts.check_cap, exclude_ids=seen, now=now
+                )
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -465,16 +520,18 @@ def _core(
 
     if opts.describe and describer is not None:
         try:
-            described = describe_postings(
-                session, describer, run_id=run_id, cap=opts.describe_cap, now=now
-            )
+            with step(stats, "describe"):
+                described = describe_postings(
+                    session, describer, run_id=run_id, cap=opts.describe_cap, now=now
+                )
             touched.update(described.pop("touched"))
             stats["describe"] = described
         except Exception as exc:
             session.rollback()
             stats["errors"].append({"source": "describe", "error": error_label(exc)})
 
-    _run_filters(session, rules or load_rules(), touched, stats, today)
+    with step(stats, "filters"):
+        _run_filters(session, rules or load_rules(), touched, stats, today)
 
     diff: Diff = diff_for_run(session, run_id)
     for kind, n in diff.counts().items():
