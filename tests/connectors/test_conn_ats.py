@@ -117,7 +117,9 @@ def test_lever_unexpected_format(client: PoliteClient, mock: respx.MockRouter) -
 
 
 def test_lever_url_parsing() -> None:
-    assert lever_parse("https://jobs.eu.lever.co/velainsurance/1b650a6c-4649-43f4-854b-a3decfb9a006") == (
+    assert lever_parse(
+        "https://jobs.eu.lever.co/velainsurance/1b650a6c-4649-43f4-854b-a3decfb9a006"
+    ) == (
         "velainsurance",
         "1b650a6c-4649-43f4-854b-a3decfb9a006",
         "eu",
@@ -185,7 +187,9 @@ def test_smartrecruiters_paginates_and_fetches_details_for_prefiltered_only(
     assert len(posts) == 3
     zurich = next(p for p in posts if p.external_id == "744000155205063")
     assert zurich.country == "CH"
-    assert zurich.url.startswith("https://jobs.smartrecruiters.com/AlturaConsulting/744000155205063")
+    assert zurich.url.startswith(
+        "https://jobs.smartrecruiters.com/AlturaConsulting/744000155205063"
+    )
     assert zurich.employment_type
     assert "Stellenbeschreibung" in zurich.raw_text and "<p>" not in zurich.raw_text
     assert zurich.extra["detail_fetched"] is True

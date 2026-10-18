@@ -75,12 +75,19 @@ def test_slug_and_url_parsing() -> None:
     b = parse_slug("civetta|wd3|ExternalCareers")
     assert b == Board("civetta", "wd3", "ExternalCareers")
     assert b.api == JOBS.removesuffix("/jobs")
-    assert parse_slug("https://airone.wd1.myworkdayjobs.com/aironecareers").slug == "airone|wd1|aironecareers"
+    assert (
+        parse_slug("https://airone.wd1.myworkdayjobs.com/aironecareers").slug
+        == "airone|wd1|aironecareers"
+    )
     with pytest.raises(ValueError):
         parse_slug("civetta/ExternalCareers")
     assert (
         board_from_entry(
-            {"tenant": "civetta", "host": "civetta.wd3.myworkdayjobs.com", "site": "ExternalCareers"}
+            {
+                "tenant": "civetta",
+                "host": "civetta.wd3.myworkdayjobs.com",
+                "site": "ExternalCareers",
+            }
         )
         == b
     )

@@ -23,7 +23,9 @@ def test_greenhouse_open_and_closed(client: PoliteClient, mock: respx.MockRouter
     mock.get(f"{GH_API}/rondinepay/jobs/4983933101").mock(
         return_value=httpx.Response(200, json=job)
     )
-    mock.get(f"{GH_API}/ondatrading/jobs/1").mock(return_value=httpx.Response(404, json={"status": 404}))
+    mock.get(f"{GH_API}/ondatrading/jobs/1").mock(
+        return_value=httpx.Response(404, json={"status": 404})
+    )
     assert check_open(client, "https://job-boards.eu.greenhouse.io/rondinepay/jobs/4983933101")
     assert check_open(client, "https://job-boards.eu.greenhouse.io/ondatrading/jobs/1") is False
 
