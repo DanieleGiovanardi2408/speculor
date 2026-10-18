@@ -54,6 +54,7 @@ JOB_URL = "https://www.linkedin.com/jobs/view/{id}/"
 
 MAX_CALLS_CEILING = 25  # the CLI allows 30/day; keep a margin for the user's own use
 DEFAULT_MAX_DETAILS = 3
+DEFAULT_MAX_SEED_DETAILS = 4  # `jobs get` for seed postings (tracker export) without a description
 CLI_TIMEOUT_S = 300  # a 25-card page with the CLI's jitter takes seconds, not minutes
 MAX_CONSECUTIVE_ERRORS = 2
 
@@ -128,6 +129,7 @@ class SearchPlan:
     searches: list[Search]
     max_calls: int = MAX_CALLS_CEILING
     max_details: int = DEFAULT_MAX_DETAILS
+    max_seed_details: int = DEFAULT_MAX_SEED_DETAILS
     date_posted: str = "auto"
     sort: str = "recent"
     limit: int = 25
@@ -144,7 +146,7 @@ class SearchPlan:
 
     @property
     def search_calls_per_day(self) -> int:
-        return max(1, self.max_calls - self.max_details)
+        return max(1, self.max_calls - self.max_details - self.max_seed_details)
 
     def cycle_days(self) -> int:
         """Days needed to run every slot once (upper bound, geoId slots cost one call)."""
@@ -230,6 +232,13 @@ def parse_plan(data: dict[str, Any]) -> SearchPlan:
         raise ValueError(f"linkedin_searches: bad date_posted {plan_window!r}")
     max_calls = max(1, min(int(data.get("max_calls", MAX_CALLS_CEILING)), MAX_CALLS_CEILING))
     max_details = max(0, min(int(data.get("max_details", DEFAULT_MAX_DETAILS)), max_calls - 1))
+    max_seed_details = max(
+        0,
+        min(
+            int(data.get("max_seed_details", DEFAULT_MAX_SEED_DETAILS)),
+            max_calls - 1 - max_details,
+        ),
+    )
     sort = str(data.get("sort", "recent"))
     if sort not in ("recent", "relevant"):
         raise ValueError(f"linkedin_searches: bad sort {sort!r}")
@@ -237,6 +246,7 @@ def parse_plan(data: dict[str, Any]) -> SearchPlan:
         searches=[s for s in searches if s.locations],
         max_calls=max_calls,
         max_details=max_details,
+        max_seed_details=max_seed_details,
         date_posted=plan_window,
         sort=sort,
         limit=max(1, min(int(data.get("limit", 25)), 25)),  # 25 = one call per search
@@ -385,6 +395,7 @@ class LinkedInJobsConnector:
         state: StateStore | None = None,
         today: Callable[[], date] = date.today,
         known: Callable[[Sequence[str]], set[str]] = known_with_description,
+        seeds: Callable[[], list[str]] = list,
     ) -> None:
         self.plan = plan
         self.binary = binary
@@ -392,6 +403,7 @@ class LinkedInJobsConnector:
         self._state = state or SettingsStateStore()
         self._today = today
         self._known = known
+        self._seeds = seeds
 
     @classmethod
     def from_settings(cls, settings: Settings, **kwargs: Any) -> LinkedInJobsConnector | None:
@@ -401,6 +413,7 @@ class LinkedInJobsConnector:
         plan = parse_plan(data if isinstance(data, dict) else {})
         if not plan.searches:
             return None
+        kwargs.setdefault("seeds", seed_job_ids)
         return cls(plan, binary=settings.linkedin_bin, **kwargs)
 
     # ---- subprocess -----------------------------------------------------------------------
@@ -497,7 +510,8 @@ class LinkedInJobsConnector:
 
         start_used, allowed = self._jobs_used()
         budget = min(self.plan.max_calls, allowed)
-        search_budget = budget - min(self.plan.max_details, budget // 2)
+        reserved = self.plan.max_details + self.plan.max_seed_details
+        search_budget = budget - min(reserved, budget // 2)
         cursor = int(state.get("cursor", 0) or 0) % len(slots)
         # Record the run before the first call: a crash must not cause a second run today.
         state.update(last_run=today, calls=0, searches=0)
@@ -532,6 +546,8 @@ class LinkedInJobsConnector:
                         found.setdefault(raw.external_id, raw)
 
             details, used = self._fetch_details(found, used, budget, start_used, state)
+            seeds, used = self._fetch_seed_details(found, used, budget, start_used, state)
+            details += seeds
         finally:
             state.update(searches=searches)
             self._state.save(state)
@@ -619,6 +635,77 @@ class LinkedInJobsConnector:
             if detail.get("apply_url"):
                 raw.extra["apply_url"] = detail["apply_url"]
         return done, used
+
+    def _fetch_seed_details(
+        self,
+        found: dict[str, RawPosting],
+        used: int,
+        budget: int,
+        start_used: int,
+        state: dict[str, Any],
+    ) -> tuple[int, int]:
+        """`jobs get` for seed postings (tracker export) still without a description, within
+        what is left of today's budget. They are returned as linkedin_jobs postings; dedupe
+        then gives their description to the seed posting."""
+        if self.plan.max_seed_details <= 0:
+            return 0, used
+        done = 0
+        for job_id in self._seeds():
+            if done >= self.plan.max_seed_details or used + 1 > budget:
+                break
+            if job_id in found:
+                continue
+            res = self._cli(["jobs", "get", job_id])
+            used = self._jobs_used()[0] - start_used
+            state.update(calls=used)
+            self._raise_if_paused(res)
+            if res.code == EXIT_QUOTA:
+                break
+            done += 1
+            if res.code != 0 or not res.rows or res.rows[-1].get("closed") is True:
+                continue
+            raw = detail_to_raw(res.rows[-1])
+            if raw is not None:
+                found[job_id] = raw
+        return done, used
+
+
+def seed_job_ids() -> list[str]:
+    """LinkedIn job ids of open seed postings still without a description (oldest check
+    first): their description comes from `jobs get` (pipeline/describe.py never opens
+    linkedin.com)."""
+    from radar.connectors.linkedin_guest import parse_job_id
+    from radar.db import session_scope
+    from radar.pipeline.describe import missing_descriptions
+
+    with session_scope() as s:
+        urls = [p.url for p in missing_descriptions(s, channel="linkedin")]
+    ids = [parse_job_id(u) for u in urls]
+    return [i for i in dict.fromkeys(ids) if i]
+
+
+def detail_to_raw(detail: dict[str, Any]) -> RawPosting | None:
+    """`jobs get` output -> RawPosting (None without id, title or description)."""
+    job_id = str(detail.get("job_id") or "").strip()
+    title = str(detail.get("title") or "").strip()
+    description = str(detail.get("description") or "").strip()
+    if not job_id.isdigit() or not title or not description:
+        return None
+    raw = RawPosting(
+        source=SOURCE,
+        external_id=job_id,
+        url=JOB_URL.format(id=job_id),
+        title=title,
+        company=str(detail.get("company") or "").strip(),
+        location=str(detail.get("location") or "").strip() or None,
+        raw_text=description,
+        employment_type=str(detail.get("employment_type") or "") or None,
+        posted_at=_iso_datetime(detail.get("listed_at")),
+        extra={"search": "seed"},
+    )
+    if detail.get("apply_url"):
+        raw.extra["apply_url"] = detail["apply_url"]
+    return raw
 
 
 __all__ = [

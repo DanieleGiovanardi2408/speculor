@@ -245,16 +245,21 @@ here talks to LinkedIn directly: the CLI's jitter, daily quotas and block detect
   quotas still allow. One search with a `geo_id` = one call (25 results). A location given only
   by `name` costs one extra lookup the first time (cached by the CLI). `max_details` calls are
   kept for `jobs get` on the newest postings whose description is not in the DB yet; a posting
-  that turns out closed is dropped.
+  that turns out closed is dropped. `max_seed_details` (default 4) more go to seed postings
+  (tracker export) with a LinkedIn link and no description: they come back as `linkedin_jobs`
+  postings and de-duplication gives their description to the seed posting.
+- **Errors say what to do**: a missing binary, a CLI older than 0.3 (the installed version is
+  shown), a failing `linkedin quota`, a timeout or all searches failing raise a `SourceError`
+  with an Italian `problem` and `action` (the exact command), kept in the run and on Fonti.
 - **Once a day**: the `linkedin_jobs:state` setting stores `last_run` (local date), the rotation
   `cursor` and the call count. A second run on the same day returns nothing and calls nothing.
   `last_run` is written before the first call, so a crash can't cause a second run.
 - **Rotation**: each (search, location) pair is a slot, ordered round-robin (every search's
   first location, then every second location, ...). Each day runs slots from the cursor until
   the next one would exceed the budget, and the next day continues from there. The cycle takes
-  `ceil(slot cost / (max_calls - max_details))` days; `date_posted: auto` uses `24h` for a 1-day
+  `ceil(slot cost / (max_calls - max_details - max_seed_details))` days; `date_posted: auto` uses `24h` for a 1-day
   cycle, `week` up to 7 days and `month` beyond, so a full cycle never leaves a gap. With the
-  default budget (22 search calls a day) up to 154 slots fit in a week.
+  default budget (18 search calls a day) up to 126 slots fit in a week.
 - **Mapping**: `external_id` = LinkedIn job id, `url` = `https://www.linkedin.com/jobs/view/<id>/`,
   which canonicalizes to the same URL as LinkedIn email alerts, so the two de-duplicate.
   The `(Ibrido)` / `(Da remoto)` suffix of the location goes to `extra.workplace`; salary text,
@@ -460,6 +465,24 @@ randomization or anything meant to look human**. Offers reach Radar in three way
 The posting is stored with `source="manual"` and `uid="manual:<sha256(canonical_url)[:16]>"`;
 `country_code`, `zone`, `content_hash` and `dedupe_key` are computed with
 `radar.pipeline.normalize`.
+
+## Seed descriptions (`pipeline/describe.py`)
+
+Seed postings (the tracker export) carry only title, company and the tracker's note. Before
+scoring, the daily run (and `radar describe [--cap 40]`) reads each one's own link, at most 40
+pages a run, never-tried first:
+
+- ATS links through the ATS public API (`fetch_single` of Greenhouse, Lever, Ashby,
+  SmartRecruiters, Personio, Workable; Workday only if robots.txt allows the CXS path).
+- Any other careers page: one request, robots.txt respected, parsed from JSON-LD `JobPosting`
+  or the page text. 404/410 or a closed marker closes the posting; the careers home page (for
+  example a `?gh_jid=` link that lands on `/`) or a JavaScript shell does not count.
+- LinkedIn and JobTeaser links are never opened here: `linkedin_jobs` reads them with
+  `jobs get` (`max_seed_details`), and the JobTeaser connector opens their offer pages.
+
+A seed posting is scored only once it has a real description (at least 300 characters, its own
+or borrowed from a duplicate). Until then it stays unscored ("da valutare"); LLM scores it got
+on the title alone are removed. A page that gave nothing is tried again after a week.
 
 ## Board coverage and `scripts/check_boards.py`
 

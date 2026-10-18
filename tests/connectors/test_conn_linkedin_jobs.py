@@ -28,6 +28,7 @@ EXAMPLE = Path(__file__).resolve().parents[2] / "config" / "linkedin_searches.ex
 PLAN = {
     "max_calls": 6,
     "max_details": 2,
+    "max_seed_details": 0,
     "locations": {
         "rome": {"geo_id": "100000001"},
         "milan": {"geo_id": "100000002"},
@@ -563,3 +564,38 @@ def test_pipeline_never_closes_by_absence_and_dedupes_alert_url(tmp_path: Path) 
         ).all()
         assert sorted(p.source for p in same) == ["email", "linkedin_jobs"]
         assert sum(p.duplicate_of is not None for p in same) == 1  # one is the other's duplicate
+
+
+def test_seed_postings_get_their_description_within_the_budget() -> None:
+    details = {
+        "901": {"job_id": "901", "title": "AI Intern", "company": "Nebbia Labs",
+                "location": "Roma", "description": "Build tools. " * 40},
+        "902": {"job_id": "902", "closed": True},
+    }  # fmt: skip
+    cli = FakeCli({"data scientist": [_card(1)]}, details=details)
+    conn = LinkedInJobsConnector(
+        parse_plan({**PLAN, "max_calls": 8, "max_seed_details": 3}),
+        binary="linkedin",
+        runner=cli,
+        state=MemoryState(),
+        today=lambda: date(2026, 10, 16),
+        known=lambda urls: set(),
+        seeds=lambda: ["901", "902", "903", "904"],
+    )
+    raws = conn.fetch()
+    gets = [c[2] for c in cli.calls if c[:2] == ["jobs", "get"]]
+    seed_gets = [g for g in gets if g.startswith("90")]
+    assert seed_gets == ["901", "902", "903"]  # max_seed_details, never more
+    seed = next(r for r in raws if r.external_id == "901")
+    assert seed.url == "https://www.linkedin.com/jobs/view/901/"
+    assert seed.raw_text.startswith("Build tools.") and seed.company == "Nebbia Labs"
+    assert all(r.external_id != "902" for r in raws)  # closed
+    assert cli.jobs_used <= 8
+
+
+def test_seed_details_reserve_shrinks_searches() -> None:
+    plan = parse_plan({**PLAN, "max_calls": 25, "max_details": 3, "max_seed_details": 4})
+    assert plan.search_calls_per_day == 18
+    assert parse_plan({**PLAN, "max_calls": 3, "max_details": 2, "max_seed_details": 9}) == (
+        parse_plan({**PLAN, "max_calls": 3, "max_details": 2, "max_seed_details": 0})
+    )
