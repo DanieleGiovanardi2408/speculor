@@ -8,6 +8,26 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- *Fonti* screen (`GET /api/sources`): per source state, the last problem in Italian with the
+  command to run, Riprendi, last run counts, 7 days of new postings, ATS boards working / empty
+  / failing; quotas (linkedin-cli calls, Groq tokens per model, contact-search budget); run
+  duration next to the time really worked. *Oggi* links to it when a source is paused or failing.
+- Seed descriptions: before scoring, seed postings get their description from their own page
+  (ATS API or careers page, robots.txt respected; LinkedIn via `jobs get` within the daily
+  budget; JobTeaser via its connector). No description, no LLM score. `radar describe`.
+- Seed scoring backlog on the large model's unused daily budget (`RADAR_BACKLOG_MODEL`,
+  `radar score --backlog`), stopping by itself once the backlog is empty.
+- Run stats: per-step timings, per-board results, `awake_seconds`.
+
+### Changed
+
+- `SourceError` carries an Italian problem/action, kept in the run and the report; linkedin-cli
+  errors (missing binary, version < 0.3, failing quota) say exactly what to run.
+- JobTeaser: a sign-in page with a captcha widget pauses as "sessione scaduta"; a Cloudflare
+  challenge on offer pages has its own pause reason. Offer links always use `/it/`.
+- The LinkedIn guest connector is off by default (robots.txt blocks it).
+- `scripts/daily.sh` runs under `caffeinate -i -s`.
+
 - "Salva in Radar" Chrome extension (`extension/jobteaser/`, Manifest V3): on a JobTeaser
   listing page the user opened, one click sends the offers already shown on the page (no
   scrolling, no pagination, no cookies) to `POST /api/ingest/jobteaser`, which requires the
