@@ -80,6 +80,9 @@ class FakeCli:
         self.calls: list[list[str]] = []  # network-hitting calls only
 
     def __call__(self, cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if cmd[1:] == ["--version"]:
+            version = "0.3.0" if self.quota_supported else "0.2.0"
+            return subprocess.CompletedProcess(cmd, 0, f"linkedin, version {version}\n", "")
         assert cmd[:2] == ["linkedin", "--json"]
         assert kwargs.get("timeout") and kwargs.get("check") is False
         args = cmd[2:]
@@ -373,10 +376,37 @@ def test_closed_detail_drops_posting() -> None:
 def test_old_cli_without_quota_is_a_source_error() -> None:
     cli = FakeCli(quota_supported=False)
     conn, state = _conn(cli)
-    with pytest.raises(SourceError, match=r">= 0\.3"):
+    with pytest.raises(SourceError, match=r">= 0\.3") as err:
         conn.fetch()
     assert cli.calls == []
     assert state.saves == 0
+    assert err.value.problem and "0.2.0" in err.value.problem and "0.3" in err.value.problem
+    assert err.value.action and "uv tool install --force git+" in err.value.action
+
+
+def test_quota_failure_explains_what_to_do() -> None:
+    def runner(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 1, "", "Traceback ...")
+
+    conn = LinkedInJobsConnector(
+        parse_plan(PLAN), runner=runner, state=MemoryState(), known=lambda u: set()
+    )
+    with pytest.raises(SourceError, match="quota") as err:
+        conn.fetch()
+    assert err.value.problem and "codice 1" in err.value.problem
+    assert err.value.action and "linkedin --json quota" in err.value.action
+
+
+def test_missing_binary_explains_what_to_do() -> None:
+    def runner(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError(cmd[0])
+
+    conn = LinkedInJobsConnector(
+        parse_plan(PLAN), runner=runner, state=MemoryState(), known=lambda u: set()
+    )
+    with pytest.raises(SourceError, match="not found") as err:
+        conn.fetch()
+    assert err.value.action and "RADAR_LINKEDIN_BIN" in err.value.action
 
 
 def test_timeout_is_not_retried() -> None:

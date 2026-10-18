@@ -220,9 +220,21 @@ def render_report(session: Session, run: Run, diff: Diff, today: date | None = N
     errors: list[dict[str, Any]] = list(stats.get("errors") or [])
     out += _section(
         "Errors",
-        [f"- {_md(str(e.get('source', '?')))}: {_md(str(e.get('error', '?')))}" for e in errors],
+        [_error_line(e) for e in errors],
     )
     return "\n".join(out).rstrip() + "\n"
+
+
+def _error_line(e: dict[str, Any]) -> str:
+    where = str(e.get("source", "?"))
+    if e.get("company"):
+        where += f" ({e['company']})"
+    line = f"- {_md(where)}: {_md(str(e.get('error', '?')))}"
+    if e.get("problem"):
+        line += f". {_md(str(e['problem']))}"
+    if e.get("action"):
+        line += f". Cosa fare: {_md(str(e['action']))}"
+    return line
 
 
 def _llm_lines(session: Session, run: Run, stats: dict[str, Any]) -> list[str]:

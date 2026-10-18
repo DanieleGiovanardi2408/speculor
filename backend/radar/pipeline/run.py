@@ -119,6 +119,25 @@ def error_label(exc: BaseException) -> str:
     return f"{name} (HTTP {status})" if status is not None else name
 
 
+def error_entry(conn: Connector, exc: BaseException, **override: str) -> dict[str, Any]:
+    """One failed source/board for the run stats: the error type (as before) plus, when the
+    connector explains it, ``problem``/``action`` in Italian, and which board it was (the
+    board label and company stay in the local database; console output stays counts-only)."""
+    entry: dict[str, Any] = {"source": conn.source, "error": error_label(exc)}
+    problem = getattr(exc, "problem", None)
+    action = getattr(exc, "action", None)
+    if problem:
+        entry["problem"] = problem
+    if action:
+        entry["action"] = action
+    entry["board"] = getattr(conn, "label", conn.source)
+    company = getattr(conn, "company", None) or getattr(conn, "company_name", None)
+    if isinstance(company, str) and company:
+        entry["company"] = company
+    entry.update(override)
+    return entry
+
+
 def _source_stats(stats: dict[str, Any], source: str) -> dict[str, int]:
     sources: dict[str, dict[str, int]] = stats["sources"]
     return sources.setdefault(source, {"boards": 0, "fetched": 0, "new": 0, "errors": 0})
@@ -164,13 +183,15 @@ def _collect(
             src["errors"] += 1
             src["paused"] = 1
             paused.add(conn.source)
-            pause(session, exc.source, exc.reason, exc.action)
+            pause(session, exc.source, exc.reason, exc.action or "")
             session.commit()
-            stats["errors"].append({"source": conn.source, "error": f"paused: {exc.reason}"})
+            stats["errors"].append(
+                error_entry(conn, exc, error=f"paused: {exc.reason}", problem=exc.reason)
+            )
             continue
         except Exception as exc:
             src["errors"] += 1
-            stats["errors"].append({"source": conn.source, "error": error_label(exc)})
+            stats["errors"].append(error_entry(conn, exc))
             continue
         src["fetched"] += len(raws)
         try:

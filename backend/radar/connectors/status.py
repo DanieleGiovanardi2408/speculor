@@ -25,7 +25,7 @@ class SourcePaused(SourceError):
     """Stop this source now, do not retry, wait for the user."""
 
     def __init__(self, source: str, reason: str, action: str) -> None:
-        super().__init__(f"{source} paused: {reason}")
+        super().__init__(f"{source} paused: {reason}", action=action)
         self.source = source
         self.reason = reason  # short, no personal data (e.g. "HTTP 999", "checkpoint")
         self.action = action  # Italian instruction shown on the Oggi screen

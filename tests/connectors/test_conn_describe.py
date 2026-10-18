@@ -68,6 +68,15 @@ def test_linkedin_and_jobteaser_are_not_fetched(client: PoliteClient) -> None:
     )
 
 
+def test_careers_home_is_not_a_description(client: PoliteClient, mock: respx.MockRouter) -> None:
+    _robots(mock, "careers.lumen.example")
+    page = "<main>" + "<p>Find your place at Lumen. 381 open roles.</p>" * 20 + "</main>"
+    mock.get("https://careers.lumen.example/?gh_jid=4012").mock(
+        return_value=httpx.Response(200, text=page)
+    )
+    assert describe_url(client, "https://careers.lumen.example/?gh_jid=4012").reason == "landing"
+
+
 def test_errors_never_raise(client: PoliteClient, mock: respx.MockRouter) -> None:
     _robots(mock, "down.example")
     mock.get("https://down.example/jobs/1").mock(return_value=httpx.Response(500))

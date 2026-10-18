@@ -116,6 +116,8 @@ def _from_page(client: PoliteClient, url: str) -> Described:
     if res.status in (404, 410):
         return Described(closed=True)
     raw = _from_html(res.url, res.text)
+    if raw.extra.get("parsed_from") != "jsonld" and urlsplit(res.url).path in ("", "/"):
+        return Described(reason="landing")  # careers home (e.g. ?gh_jid= links), not the job
     if any(marker in (raw.raw_text or "").lower() for marker in CLOSED_MARKERS):
         return Described(closed=True)
     return Described(raw=raw)

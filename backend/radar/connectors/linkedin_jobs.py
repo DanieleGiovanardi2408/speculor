@@ -73,6 +73,16 @@ ACTION_BLOCKED = (
     "`linkedin auth login` e `radar connectors resume linkedin_jobs`. Per oggi niente altre "
     "ricerche automatiche."
 )
+INSTALL_CMD = "uv tool install --force git+https://github.com/mayai-it/linkedin-cli@main"
+ACTION_INSTALL = (
+    f"Installa linkedin-cli: `{INSTALL_CMD}`, poi in .env imposta RADAR_LINKEDIN_BIN al "
+    "percorso stampato da `which linkedin` (percorso assoluto: launchd non legge il PATH della "
+    "shell)."
+)
+ACTION_UPGRADE = (
+    f"Aggiorna linkedin-cli: `{INSTALL_CMD}` (non `uv tool install .` da una cartella su un "
+    "altro branch), poi controlla che `linkedin --version` dica 0.3.0 o più."
+)
 ACTION_AUTH = (
     "La sessione di linkedin-cli è scaduta: esegui `linkedin auth login`, poi "
     "`radar connectors resume linkedin_jobs`."
@@ -401,24 +411,60 @@ class LinkedInJobsConnector:
             proc = self._runner(
                 cmd, capture_output=True, text=True, timeout=CLI_TIMEOUT_S, check=False
             )
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             raise SourceError(
-                "linkedin_jobs: linkedin-cli not found (RADAR_LINKEDIN_BIN)"
+                "linkedin_jobs: linkedin-cli not found (RADAR_LINKEDIN_BIN)",
+                problem="linkedin-cli non è installato nel percorso indicato da "
+                "RADAR_LINKEDIN_BIN (o non è eseguibile).",
+                action=ACTION_INSTALL,
             ) from None
         except subprocess.TimeoutExpired:
             # Never retried: the call may have reached LinkedIn.
-            raise SourceError("linkedin_jobs: linkedin-cli timed out") from None
+            raise SourceError(
+                "linkedin_jobs: linkedin-cli timed out",
+                problem=f"linkedin-cli non ha risposto entro {CLI_TIMEOUT_S // 60} minuti "
+                f"(comando `{args[0] if args else ''}`).",
+                action="Prova `linkedin --json quota` nel terminale: se resta bloccato, "
+                "controlla la connessione e riprova domani (nessun nuovo tentativo oggi).",
+            ) from None
         stderr = (proc.stderr or "").strip()
         return CliOutcome(proc.returncode, _parse_rows(proc.stdout), stderr)
+
+    def version(self) -> str | None:
+        """``linkedin --version`` ("linkedin, version 0.3.0" -> "0.3.0"); None if unknown."""
+        try:
+            proc = self._runner(
+                [self.binary, "--version"], capture_output=True, text=True, timeout=30, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        m = re.search(r"(\d+\.\d+(?:\.\d+)?)", proc.stdout or "")
+        return m.group(1) if m else None
 
     def _jobs_used(self) -> tuple[int, int]:
         """(calls used today, calls still allowed) from the CLI's own offline quota file."""
         res = self._cli(["quota"])
+        if res.code != 0 and "no such command" in res.error.lower():
+            res = CliOutcome(0)  # linkedin-cli < 0.3: no `quota` command at all
+        if res.code != 0:
+            raise SourceError(
+                f"linkedin_jobs: `linkedin quota` failed (exit {res.code})",
+                problem=f"Il comando `linkedin --json quota` è fallito (codice {res.code}), "
+                "quindi Radar non sa quante chiamate restano oggi e non ne fa nessuna.",
+                action="Esegui `linkedin --json quota` nel terminale e leggi l'errore; se "
+                f"linkedin-cli è vecchio o rotto reinstallalo con `{INSTALL_CMD}`.",
+            )
         data = res.rows[-1] if res.rows else {}
-        jobs = data.get("jobs") if res.code == 0 else None
+        jobs = data.get("jobs")
         api = data.get("api_total") or {}
         if not isinstance(jobs, dict):
-            raise SourceError("linkedin_jobs: linkedin-cli >= 0.3 required (no jobs quota)")
+            found = self.version()
+            raise SourceError(
+                "linkedin_jobs: linkedin-cli >= 0.3 required (no jobs quota)",
+                problem=f"È installato linkedin-cli {found or 'di versione sconosciuta'}, ma "
+                "serve la 0.3 o successiva (comandi `jobs` e quota `jobs`).",
+                action=ACTION_UPGRADE,
+            )
         used = int(jobs.get("used", 0))
         left = min(
             int(jobs.get("limit", 0)) - used,
@@ -459,6 +505,7 @@ class LinkedInJobsConnector:
 
         found: dict[str, RawPosting] = {}
         used = searches = errors = consecutive = details = 0
+        last_code = 0
         try:
             for step in range(len(slots)):  # at most one full cycle per day
                 search, loc = slots[(cursor + step) % len(slots)]
@@ -472,6 +519,7 @@ class LinkedInJobsConnector:
                     break
                 if res.code != 0:
                     errors += 1
+                    last_code = res.code
                     consecutive += 1
                     if consecutive >= MAX_CONSECUTIVE_ERRORS:
                         break
@@ -497,7 +545,13 @@ class LinkedInJobsConnector:
             details,
         )
         if errors and not searches:
-            raise SourceError(f"linkedin_jobs: all {errors} searches failed")
+            raise SourceError(
+                f"linkedin_jobs: all {errors} searches failed (last exit {last_code})",
+                problem=f"Tutte le {errors} ricerche LinkedIn di oggi sono fallite (ultimo "
+                f"codice di uscita di linkedin-cli: {last_code}).",
+                action="Prova a mano `linkedin --json jobs search --limit 1 -- data` e leggi "
+                "l'errore. Radar riprova da solo domani.",
+            )
         return list(found.values())
 
     def _search_args(self, search: Search, loc: Location) -> list[str]:

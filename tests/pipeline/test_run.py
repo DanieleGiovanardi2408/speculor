@@ -89,7 +89,14 @@ def test_end_to_end(engine: Engine, rules: Rules, tmp_path: Path) -> None:
     assert st["sources"]["greenhouse"] == {"boards": 1, "fetched": 3, "new": 3, "errors": 0}
     assert st["sources"]["ashby"]["errors"] == 1
     assert st["sources"]["linkedin"]["new"] == 0  # same company/title/country: duplicate
-    assert st["errors"] == [{"source": "ashby", "error": "SourceError (HTTP 503)"}]
+    assert st["errors"] == [
+        {
+            "source": "ashby",
+            "error": "SourceError (HTTP 503)",
+            "board": "ashby board",
+            "company": "Zeta",
+        }
+    ]
     assert st["new"] == 4 and st["rejected"] == 2  # German + UK
     assert st["closed_by_check"]["closed"] == 1  # the seed posting; linkedin seen this run
     assert res.report_path is not None and res.report_path.exists()
