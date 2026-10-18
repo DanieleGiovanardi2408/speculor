@@ -58,9 +58,10 @@ def make_posting(
         )
     )
     n = len(session.exec(select(Posting)).all())
+    source = kw.pop("source", "greenhouse")
     p = Posting(
         uid=f"test:{n}",
-        source="greenhouse",
+        source=source,
         external_id=str(n),
         url=f"https://example.com/jobs/{n}",
         canonical_url=f"https://example.com/jobs/{n}",

@@ -165,3 +165,38 @@ def test_offtarget_titles_get_rules_bassa_without_llm(
     assert stats["rules_bassa"] == 1 and stats["scored"] == 1
     rules = session.exec(select(Score).where(Score.provider == "rules")).one()
     assert rules.priority == "Bassa"
+
+
+def test_seed_backlog_uses_the_backlog_model_and_only_described_seeds(
+    session: Session, monkeypatch: pytest.MonkeyPatch, fake_env: None
+) -> None:
+    other = make_posting(session, title="Data Science Intern")
+    described = make_posting(
+        session, title="AI Intern", source="seed", description_status="fetched"
+    )
+    make_posting(session, title="ML Intern", source="seed")  # no description: never scored
+    purposes: list[str] = []
+    real = scoring.get_provider
+
+    def spy(purpose: str):  # type: ignore[no-untyped-def]
+        purposes.append(purpose)
+        return real(purpose)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(scoring, "get_provider", spy)
+    stats = scoring.score_seed_backlog(session, run_id=None)
+    assert purposes == ["backlog"]
+    assert stats["scored"] == 1
+    assert {s.posting_id for s in scores(session)} == {described.id}
+    assert other.id not in {s.posting_id for s in scores(session)}
+    assert scoring.score_seed_backlog(session, run_id=None)["candidates"] == 0  # done
+
+
+def test_seed_backlog_never_runs_on_a_paid_provider(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RADAR_LLM_PROVIDER", "anthropic")
+    scoring.radar_config.get_settings.cache_clear()
+    try:
+        assert scoring.score_seed_backlog(session, run_id=None) == {"skipped": "disabled"}
+    finally:
+        scoring.radar_config.get_settings.cache_clear()

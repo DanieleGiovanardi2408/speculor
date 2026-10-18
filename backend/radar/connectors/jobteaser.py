@@ -68,10 +68,24 @@ BLOCK_ACTION = (
     "JobTeaser ha mostrato un controllo anti-bot o un blocco: non viene aggirato. Apri "
     "JobTeaser a mano più tardi, poi `radar connectors resume jobteaser`"
 )
+OFFER_BLOCK_REASON = "verifica anti-bot sulle pagine offerta"
+OFFER_BLOCK_ACTION = (
+    "Il login funziona, ma JobTeaser (Cloudflare) chiede una verifica anti-bot quando il "
+    "browser automatico apre le pagine delle offerte: Radar non la aggira e non riprova. Le "
+    "offerte salvate con «Salva in Radar» e quelle delle email restano in Radar senza "
+    "descrizione (non vengono valutate). Per riprovare più avanti: `radar connectors resume "
+    "jobteaser`, poi `make jobteaser-test`."
+)
 
 # --------------------------------------------------------------------------- page classification
 
-_LOGIN_PATH_RE = re.compile(r"/(users/sign_in|sign_in|login|signin|auth/|saml|cas/|sso)", re.I)
+_LOGIN_PATH_RE = re.compile(
+    r"/(users/sign[_-]?in|sign[_-]?in|log[_-]?in|signin|session|connexion|auth/|saml|cas/|sso)",
+    re.I,
+)
+_LOGIN_FORM_RE = re.compile(
+    r"<form[^>]+action=[\"'][^\"']*(sign[_-]?in|log[_-]?in|session|saml|sso)", re.I
+)
 _BLOCK_TITLE_RE = re.compile(
     r"security checkup|just a moment|attention required|access denied|un momento|"
     r"verifica di sicurezza|vérification",
@@ -131,7 +145,12 @@ def is_login_page(page: Page, base_url: str = DEFAULT_BASE_URL) -> bool:
         return True
     if _LOGIN_PATH_RE.search(parts.path):
         return True
-    return 'name="user[password]"' in page.html or 'id="user_password"' in page.html
+    html = page.html
+    if 'name="user[password]"' in html or 'id="user_password"' in html:
+        return True
+    return bool(re.search(r"<input[^>]+type=[\"']password", html, re.I)) or bool(
+        _LOGIN_FORM_RE.search(html)
+    )
 
 
 def is_block_page(page: Page) -> bool:
@@ -146,12 +165,15 @@ def is_block_page(page: Page) -> bool:
     return page.status == 403
 
 
-def check_page(page: Page, base_url: str = DEFAULT_BASE_URL) -> None:
+def check_page(page: Page, base_url: str = DEFAULT_BASE_URL, *, offer: bool = False) -> None:
     """Raise SourcePaused for an expired session or a block page (login first: a sign-in page
-    may embed a captcha widget, and the fix there is logging in again)."""
+    may embed a captcha widget, and the fix there is logging in again). ``offer``: the page is
+    a single offer opened after a working session check."""
     if is_login_page(page, base_url):
         raise SourcePaused(SOURCE, "sessione scaduta", PAUSE_ACTION)
     if is_block_page(page):
+        if offer:
+            raise SourcePaused(SOURCE, OFFER_BLOCK_REASON, OFFER_BLOCK_ACTION)
         raise SourcePaused(SOURCE, "captcha o blocco", BLOCK_ACTION)
 
 
@@ -646,12 +668,12 @@ class JobTeaserConnector:
             self._robots = RobotsRules.parse(text)
         return self._robots
 
-    def _visit(self, browser: Browser, url: str) -> Page:
+    def _visit(self, browser: Browser, url: str, *, offer: bool = False) -> Page:
         if self._visits:
             self.sleep(self.pause)
         self._visits += 1
         page = browser.visit(url)
-        check_page(page, self.base_url)
+        check_page(page, self.base_url, offer=offer)
         return page
 
     def _count(self, key: str, n: int = 1) -> None:
@@ -707,7 +729,7 @@ class JobTeaserConnector:
                     self._count("detail_robots_disallowed")
                     continue
                 self.state.count_open(day)
-                page = self._visit(browser, url)
+                page = self._visit(browser, url, offer=True)
                 detail = parse_detail(page)
                 self._count(f"detail_{detail['how']}")
                 if detail["closed"]:
@@ -817,7 +839,7 @@ def smoke_test(conn: JobTeaserConnector, browser: Browser) -> dict[str, Any]:
     if pending:
         url = conn.offer_url(pending[0]["id"], pending[0].get("url"))
         if conn.robots().allowed(url):
-            detail = parse_detail(conn._visit(browser, url))
+            detail = parse_detail(conn._visit(browser, url, offer=True))
             report.update(
                 detail_parse=detail["how"],
                 detail_closed=detail["closed"],

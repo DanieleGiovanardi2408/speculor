@@ -38,7 +38,7 @@ from radar.timeutil import utcnow
 
 log = logging.getLogger(__name__)
 
-Purpose = Literal["scoring", "draft", "verify"]
+Purpose = Literal["scoring", "draft", "verify", "backlog"]
 UsagePurpose = Literal["scoring", "pack", "draft", "contacts", "verify"]
 SleepFn = Callable[[float], None]
 
@@ -564,6 +564,8 @@ def get_provider(purpose: Purpose) -> LLMProvider:
         name, model = settings.llm_provider, settings.scoring_model
     elif purpose == "verify":
         name, model = settings.llm_provider, settings.verify_model
+    elif purpose == "backlog":
+        name, model = settings.llm_provider, settings.backlog_model
     else:
         name, model = settings.effective_draft_provider, settings.draft_model
     if name == "fake":

@@ -16,7 +16,7 @@ import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import and_, exists, func, or_
+from sqlalchemy import and_, exists, func, or_, true
 from sqlmodel import Session, col, select
 
 from radar import config as radar_config
@@ -26,6 +26,7 @@ from radar.llm.provider import (
     LLMProvider,
     LLMResult,
     MissingKeyError,
+    Purpose,
     RateLimitExhausted,
     get_provider,
     record_usage,
@@ -141,7 +142,9 @@ def parse_score(text: str) -> ScoreOut:
         raise ValueError(f"schema errors in: {fields}") from None
 
 
-def pending_postings(session: Session, limit: int) -> list[Posting]:
+def pending_postings(
+    session: Session, limit: int, sources: tuple[str, ...] | None = None
+) -> list[Posting]:
     """Open, non-rejected, non-duplicate postings whose content was never scored, best
     embedding similarity first (across the whole backlog, not only today's). Seed postings
     without a description are left out: they are never scored on the title alone."""
@@ -165,6 +168,7 @@ def pending_postings(session: Session, limit: int) -> list[Posting]:
                 ),
             ),
         )
+        .where(col(Posting.source).in_(sources) if sources else true())
         .order_by(
             # embedding pre-ranking first (NULL = not ranked yet, after ranked ones)
             col(Posting.similarity).is_(None),
@@ -255,12 +259,19 @@ def _rules_score(posting: Posting, keyword: str) -> Score:
     )
 
 
-def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str, Any]:
+def score_pending(
+    session: Session,
+    run_id: int | None,
+    limit: int,
+    *,
+    sources: tuple[str, ...] | None = None,
+    purpose: Purpose = "scoring",
+) -> dict[str, Any]:
     profile = radar_config.load_yaml_config("profile")
     relevance = Relevance(profile)
     # Off-target titles are scored "Bassa" by rule (no LLM call, not counted in `limit`);
     # the rest are scored by the LLM, target roles first.
-    pool = pending_postings(session, max(limit * 6, limit))
+    pool = pending_postings(session, max(limit * 6, limit), sources)
     auto = 0
     llm_queue: list[Posting] = []
     for posting in pool:
@@ -281,7 +292,24 @@ def score_pending(session: Session, run_id: int | None, limit: int) -> dict[str,
     )
     postings = llm_queue[:limit]
     stats: dict[str, Any] = {"candidates": len(postings), "rules_bassa": auto}
-    return _score_with_llm(session, run_id, postings, profile, relevance, stats)
+    return _score_with_llm(session, run_id, postings, profile, relevance, stats, purpose)
+
+
+BACKLOG_LIMIT = 80  # postings a day, at most (about 2k tokens each)
+
+
+def score_seed_backlog(
+    session: Session, run_id: int | None, limit: int = BACKLOG_LIMIT
+) -> dict[str, Any]:
+    """Seed postings with a description and no score yet, scored on the large model's unused
+    daily budget (``RADAR_BACKLOG_MODEL``) after the packs. Stops at that model's rate limit;
+    once the backlog is empty it makes no call, so the normal split comes back by itself."""
+    settings = radar_config.get_settings()
+    if not settings.backlog_model or settings.llm_provider == "anthropic":
+        return {"skipped": "disabled"}  # never on a paid provider
+    if settings.backlog_model == settings.scoring_model:
+        return {"skipped": "same model as scoring"}
+    return score_pending(session, run_id, limit, sources=("seed",), purpose="backlog")
 
 
 def _score_with_llm(
@@ -291,6 +319,7 @@ def _score_with_llm(
     profile: dict[str, Any],
     relevance: Relevance,
     stats: dict[str, Any],
+    purpose: Purpose = "scoring",
 ) -> dict[str, Any]:
     """Score ``postings`` with the LLM (one request each), then apply the guards."""
     stats.update(
@@ -307,7 +336,7 @@ def _score_with_llm(
     if not postings:
         return stats
     try:
-        provider = get_provider("scoring")
+        provider = get_provider(purpose)
     except MissingKeyError:
         log.warning("scoring skipped: missing API key (%d pending)", len(postings))
         return {

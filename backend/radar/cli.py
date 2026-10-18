@@ -185,13 +185,21 @@ def run(
 
 
 @app.command()
-def score(limit: Annotated[int, typer.Option()] = 30) -> None:
+def score(
+    limit: Annotated[int | None, typer.Option(help="Default 30 (80 with --backlog)")] = None,
+    backlog: Annotated[
+        bool, typer.Option(help="Score the seed backlog on RADAR_BACKLOG_MODEL instead")
+    ] = False,
+) -> None:
     """Score unscored postings that passed the filters."""
     from radar.db import session_scope
-    from radar.llm.scoring import score_pending
+    from radar.llm.scoring import BACKLOG_LIMIT, score_pending, score_seed_backlog
 
     with session_scope() as s:
-        stats = score_pending(s, run_id=None, limit=limit)
+        if backlog:
+            stats = score_seed_backlog(s, run_id=None, limit=limit or BACKLOG_LIMIT)
+        else:
+            stats = score_pending(s, run_id=None, limit=limit or 30)
     console.print(stats)
 
 

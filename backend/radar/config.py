@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # large model's daily budget stays for drafting.
     verify_drafts: bool = Field(default=True, validation_alias="RADAR_VERIFY_DRAFTS")
     verify_model: str = Field(default="openai/gpt-oss-20b", validation_alias="RADAR_VERIFY_MODEL")
+    # Seed scoring backlog: scored after the packs on the scoring provider with this model (the
+    # large model's unused daily budget), until the backlog is empty; "" turns it off.
+    backlog_model: str = Field(
+        default="openai/gpt-oss-120b", validation_alias="RADAR_BACKLOG_MODEL"
+    )
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 

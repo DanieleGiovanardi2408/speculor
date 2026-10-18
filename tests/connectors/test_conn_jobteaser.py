@@ -198,6 +198,31 @@ def test_login_redirect_and_sso_pause() -> None:
     jt.check_page(page("dashboard.html", f"{BASE}/it"))  # no raise
 
 
+@pytest.mark.parametrize(
+    "url,html",
+    [
+        # sign-in page with a captcha widget: the fix is logging in again, not waiting
+        (
+            f"{BASE}/it/users/sign-in",
+            '<form><div class="cf-turnstile"></div><input type="password" name="p"></form>',
+        ),
+        (
+            f"{BASE}/it/dashboard",
+            '<script src="https://www.google.com/recaptcha/api.js"></script>'
+            '<div class="g-recaptcha"></div><form action="/it/users/sign_in"><button>Accedi'
+            "</button></form>",
+        ),
+        (f"{BASE}/it", '<div class="g-recaptcha"></div><input type="password" id="pw">'),
+    ],
+)
+def test_login_page_with_captcha_is_an_expired_session(url: str, html: str) -> None:
+    page = jt.Page(url=url, status=200, html=f"<html><title>Accedi</title>{html}</html>")
+    with pytest.raises(SourcePaused) as exc:
+        jt.check_page(page)
+    assert exc.value.reason == "sessione scaduta"
+    assert "make jobteaser-login" in exc.value.action
+
+
 @pytest.mark.parametrize("status", [200, 403])
 def test_block_page_pauses(status: int) -> None:
     blocked = page("block_cloudflare.html", f"{BASE}/it/job-offers/{UUID1}", status=status)
@@ -356,7 +381,8 @@ def test_fetch_pauses_on_block_mid_run_without_retry() -> None:
     browser = FakeBrowser(routes)
     with pytest.raises(SourcePaused) as exc:
         connector(browser, pending=[cand(UUID1), cand(NUM)]).fetch()
-    assert exc.value.reason == "captcha o blocco"
+    assert exc.value.reason == jt.OFFER_BLOCK_REASON  # the session itself works
+    assert "Il login funziona" in exc.value.action
     assert len(browser.visits) == 2 and browser.closed  # stopped at the first block
 
 

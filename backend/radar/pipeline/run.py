@@ -54,6 +54,7 @@ class PipelineOptions:
     check_cap: int = DEFAULT_CHECK_CAP
     describe: bool = True  # fetch descriptions of seed postings that lack one
     describe_cap: int = DESCRIBE_CAP
+    backlog: bool = True  # seed scoring backlog on the large model's unused budget
     rank: bool = True  # local embedding similarity before the LLM (needs the `embed` extra)
 
 
@@ -275,6 +276,15 @@ def _run_llm(session: Session, run_id: int, opts: PipelineOptions, stats: dict[s
     except Exception as exc:
         session.rollback()
         stats["errors"].append({"source": "llm:packs", "error": error_label(exc)})
+    if opts.backlog:
+        try:
+            from radar.llm.scoring import score_seed_backlog
+
+            llm["backlog"] = score_seed_backlog(session, run_id=run_id)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            stats["errors"].append({"source": "llm:backlog", "error": error_label(exc)})
     try:
         from radar.llm.verify import reverify_incomplete
 
