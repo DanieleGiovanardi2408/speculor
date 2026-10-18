@@ -28,6 +28,7 @@ from radar.api.routes import (
     postings,
     runs,
     settings,
+    sources,
     today,
     usage,
 )
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
         usage,
         connectors,
         jobteaser,
+        sources,
     )
     for module in modules:
         api.include_router(module.router)

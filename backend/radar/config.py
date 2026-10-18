@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     backlog_model: str = Field(
         default="openai/gpt-oss-120b", validation_alias="RADAR_BACKLOG_MODEL"
     )
+    # Daily token limits per Groq model shown on Fonti ("model=tokens,..."); defaults in
+    # radar.sources.GROQ_DAILY_TOKENS (free tier).
+    groq_daily_tokens: str = Field(default="", validation_alias="RADAR_GROQ_DAILY_TOKENS")
     groq_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 
