@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlmodel import Session, select
 
-from radar.connectors.email_parsers.jobteaser import offer_key
+from radar.connectors.email_parsers.jobteaser import normalize_location, offer_key
 from radar.db import get_setting, set_setting
 from radar.models import Posting
 from radar.pipeline.filters import Rules, apply_filters
@@ -87,7 +87,7 @@ def ingest_offers(
         offer_id, url = key
         seen.add(offer_id)
         company = _clean(offer.company, CAPS["company"])
-        location = _clean(offer.location, CAPS["location"]) or None
+        location = normalize_location(_clean(offer.location, CAPS["location"]) or None)
         existing = session.exec(
             select(Posting).where(Posting.uid == f"{SOURCE}:{offer_id}")
         ).first()
@@ -139,6 +139,36 @@ def ingest_offers(
         counts["updated"],
         counts["ignored"],
     )
+    return counts
+
+
+def normalize_stored(session: Session, rules: Rules | None = None) -> dict[str, int]:
+    """Stored JobTeaser offer links -> the Italian interface (/it/), the "several locations"
+    placeholder -> "Più sedi"; the filters run again on what changed. Any source (extension,
+    alert emails, seed). Returns counts."""
+    from sqlmodel import col
+
+    counts = {"urls": 0, "locations": 0}
+    changed: list[Posting] = []
+    for p in session.exec(select(Posting).where(col(Posting.url).contains("jobteaser.com"))):
+        key = offer_key(p.url)
+        touched = False
+        if key is not None and key[1] != p.url:
+            p.url = key[1]
+            counts["urls"] += 1
+            touched = True
+        location = normalize_location(p.location)
+        if location != p.location:
+            p.location = location
+            counts["locations"] += 1
+            touched = True
+        if touched:
+            session.add(p)
+            changed.append(p)
+    if rules is not None:
+        for p in changed:
+            apply_filters(session, p, rules)
+    session.commit()
     return counts
 
 

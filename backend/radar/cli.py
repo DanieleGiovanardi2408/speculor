@@ -628,6 +628,17 @@ def jobteaser_test() -> None:
     console.print(json.dumps(report, indent=2, ensure_ascii=False))
 
 
+@jobteaser_app.command("normalize")
+def jobteaser_normalize() -> None:
+    """Stored JobTeaser links -> /it/ interface, "several locations" -> "Più sedi"; re-filter."""
+    from radar.db import session_scope
+    from radar.pipeline.filters import load_rules
+    from radar.pipeline.jobteaser_ingest import normalize_stored
+
+    with session_scope() as s:
+        console.print(normalize_stored(s, load_rules()))
+
+
 @jobteaser_app.command("details")
 def jobteaser_details(
     llm: Annotated[bool, typer.Option(help="Score and build packs afterwards")] = True,

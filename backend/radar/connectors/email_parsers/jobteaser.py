@@ -69,8 +69,27 @@ def offer_key(href: str) -> tuple[str, str] | None:
         return None
     offer_id = m.group("id").lower()
     host = m.group("host").lower()
-    path = f"{m.group('prefix')}{m.group('id')}{m.group('slug') or ''}"
+    # Always the Italian interface (/it/): links saved from a page shown in another locale
+    # (e.g. /ca/) would otherwise open, and be read, in that language.
+    path = f"/{OFFER_LOCALE}/job-offers/{m.group('id')}{m.group('slug') or ''}"
     return offer_id, f"https://{host}{path}"
+
+
+OFFER_LOCALE = "it"
+_MULTI_LOCATION = re.compile(
+    r"^(diverses localitzacions|varias ubicaciones|diverse (sedi|località)|più sedi|"
+    r"plusieurs (lieux|localisations|sites)|several locations|multiple locations|"
+    r"mehrere standorte|meerdere locaties)\b",
+    re.I,
+)
+
+
+def normalize_location(location: str | None) -> str | None:
+    """JobTeaser's "several locations proposed" placeholder, in any interface language, becomes
+    "Più sedi" (it is not a place, and it is not text in a foreign language)."""
+    if location and _MULTI_LOCATION.match(location.strip()):
+        return "Più sedi"
+    return location
 
 
 def _fields(rest: list[str]) -> tuple[str, str | None, str | None, list[str]]:
@@ -110,7 +129,7 @@ def _posting(
         url=url,
         title=title,
         company=company,
-        location=location,
+        location=normalize_location(location),
         employment_type=contract,
         raw_text="\n".join([title, *rest[:6]]),
         extra={

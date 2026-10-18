@@ -43,7 +43,7 @@ from urllib.parse import urlsplit
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from radar.connectors.base import SourceError
-from radar.connectors.email_parsers.jobteaser import offer_key
+from radar.connectors.email_parsers.jobteaser import normalize_location, offer_key
 from radar.connectors.http import PoliteClient, html_to_text, parse_date, parse_datetime
 from radar.connectors.robots import RobotsRules
 from radar.connectors.status import SourcePaused
@@ -774,7 +774,7 @@ def to_raw(
         url=url,
         title=title,
         company=detail.get("company") or known.get("company") or "",
-        location=detail.get("location") or known.get("location"),
+        location=normalize_location(detail.get("location") or known.get("location")),
         employment_type=detail.get("contract"),
         raw_text=detail.get("description") or "",
         posted_at=parse_datetime(posted) if posted else None,
